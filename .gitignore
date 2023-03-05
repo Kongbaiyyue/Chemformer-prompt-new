@@ -1,0 +1,13 @@
+experiments/
+runs/*
+*.pt
+train_*.log
+data/
+*.pyc
+*.log
+*.err
+*.xml
+.idea/
+tb_logs/
+models/
+GTA-Bert.iml

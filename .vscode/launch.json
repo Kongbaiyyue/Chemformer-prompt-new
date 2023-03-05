@@ -1,0 +1,13 @@
+{
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            // "cwd": "/home/ubuntu/anaconda3/envs/molbart/bin/"
+        }
+    ]
+}
