@@ -2,12 +2,14 @@ experiments/
 runs/*
 *.pt
 train_*.log
-data/
+*.pickle
 *.pyc
 *.log
 *.err
 *.xml
+*.zip
+*.ckpt
 .idea/
 tb_logs/
-models/
+# models/
 GTA-Bert.iml
