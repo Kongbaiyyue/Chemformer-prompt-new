@@ -420,6 +420,7 @@ class FineTuneReactionDataModule(_AbsDataModule):
         edges = []
         lengths = []
         for smi in prods_smiles:
+            smi = smi.split(">", maxsplit=1)[1]
             atom_feature, edge, adj = get_graph_features_from_smi(smi)
             prods_adj.append(adj)
             atom_features.append(atom_feature)

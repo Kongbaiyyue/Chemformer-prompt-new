@@ -155,7 +155,6 @@ class Uspto50(ReactionDataset):
             react_str = f"{str(type_token)}{react_str}" if self.type_token else react_str
         else:
             prod_str = f"{str(type_token)}{prod_str}" if self.type_token else prod_str
-
         return react_str, prod_str
 
 

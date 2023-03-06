@@ -6,6 +6,7 @@ import rdkit.Chem as Chem
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 
 import torch
+from molbart.data.datasets import ReactionDataset
 
 from molbart.models.template_prompt import TPrompt
 
@@ -59,7 +60,7 @@ def combine_smiles():
 
 # checkpoint2 = pl_load("models/combined/step=1000000.ckpt", map_location=lambda storage, loc: storage)
 
-# print(checkpoint1["state_dict"])
+print(checkpoint1["state_dict"])
 checkpoint2 = torch.load('fuse_pretrain_mask_3layer.pt')
 # print(checkpoint2["state_dict"])
 print(123)
@@ -67,3 +68,4 @@ print(123)
 model = TPrompt(512, 256, 8 , 6, 3, n_prefix_conv=256)
 model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
 print(321)
+

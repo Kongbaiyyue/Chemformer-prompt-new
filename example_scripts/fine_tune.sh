@@ -1,7 +1,7 @@
 
 
 python -m molbart.fine_tune \
-  --dataset uspto_50 \
+  --dataset uspto_50_with_type \
   --data_path data/uspto_50.pickle \
   --model_path models/combined/step=1000000.ckpt \
   --task backward_prediction \
