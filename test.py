@@ -6,7 +6,6 @@ import rdkit.Chem as Chem
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 
 import torch
-from molbart.data.datasets import ReactionDataset
 
 from molbart.models.template_prompt import TPrompt
 
@@ -68,4 +67,3 @@ print(123)
 model = TPrompt(512, 256, 8 , 6, 3, n_prefix_conv=256)
 model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
 print(321)
-

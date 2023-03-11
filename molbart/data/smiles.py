@@ -58,6 +58,7 @@ def get_graph_features_from_smi(smi):
     smi = smi.replace(' ', '')
     if not smi.strip():
         smi = "CC"          # hardcode to ignore
+
     graph = get_graph_from_smiles(smi).prod_mol
 
     mol = graph.mol

@@ -9,7 +9,6 @@ train_*.log
 *.xml
 *.zip
 *.ckpt
-*.sh
 .idea/
 tb_logs/
 # models/

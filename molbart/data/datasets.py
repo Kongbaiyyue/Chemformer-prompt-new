@@ -155,8 +155,13 @@ class Uspto50(ReactionDataset):
             react_str = f"{str(type_token)}{react_str}" if self.type_token else react_str
         else:
             prod_str = f"{str(type_token)}{prod_str}" if self.type_token else prod_str
+<<<<<<< HEAD
         prod_str = f"<UNUSED_188>{prod_str}"
         return react_str, prod_str, type_token
+=======
+
+        return react_str, prod_str
+>>>>>>> parent of 2fd7d58... add reaction type as prefix-prompt for fine tune Chemformer
 
 
 class UsptoMixed(ReactionDataset):
