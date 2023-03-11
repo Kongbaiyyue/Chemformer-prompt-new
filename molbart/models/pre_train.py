@@ -399,7 +399,7 @@ class BARTModel(_AbsTransformerModel):
         # num_hiddens = 256
         # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
 
-        # self.prompt_model = None
+        self.prompt_model = None
         self.n_layer = num_layers
         self.n_head = num_heads
         self.head_dim = d_model//self.n_head
@@ -599,7 +599,7 @@ class BARTModel(_AbsTransformerModel):
         token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
         type_loss = self.loss_type_fn(type_smiles, type_tokens)
         # print("type_loss", type_loss)
-        loss = token_mask_loss + 40 * type_loss
+        loss = token_mask_loss + 50 * type_loss
 
         # return token_mask_loss
         return loss, type_loss
