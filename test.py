@@ -56,12 +56,12 @@ def combine_smiles():
 # c = torch.cat([a, b], dim=-2)
 # print(c.shape)
 
-# checkpoint1 = pl_load("tb_logs/backward_prediction/version_80_freeze_fuse_graph_freeze_che_300epoch_120lenPrompt/checkpoints/last.ckpt", map_location=lambda storage, loc: storage)
+checkpoint1 = pl_load("tb_logs/backward_prediction/version_80_freeze_fuse_graph_freeze_che_300epoch_120lenPrompt/checkpoints/last.ckpt", map_location=lambda storage, loc: storage)
 
-# checkpoint2 = pl_load("models/combined/step=1000000.ckpt", map_location=lambda storage, loc: storage)
+checkpoint2 = pl_load("models/combined/step=1000000.ckpt", map_location=lambda storage, loc: storage)
 
-print(checkpoint1["state_dict"])
-checkpoint2 = torch.load('fuse_pretrain_mask_3layer.pt')
+# print(checkpoint1["state_dict"])
+# checkpoint2 = torch.load('fuse_pretrain_mask_3layer.pt')
 # print(checkpoint2["state_dict"])
 print(123)
 

@@ -451,3 +451,11 @@ class MolEncTokeniser:
             padded.append(atom)
 
         return padded
+    
+    def convert_types_to_ids(self, token_data):
+        ids_list = []
+
+        ids = [self.vocab.get(token, self.unk_id) for token in token_data]
+        ids_list.append(ids)
+
+        return ids_list
