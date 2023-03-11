@@ -122,14 +122,13 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
             # vocab_size, num_hiddens, ffn_num_hiddens, num_heads = 88, 256, 512, 8
             # norm_shape, ffn_num_input, num_layers, dropout = [256], 256, 3, 0.2
             num_hiddens = 256
-            model.prompt_model = TPrompt(args.d_model, num_hiddens, args.num_heads ,args.num_layers, 3, n_prefix_conv=256)
+            model.prompt_model = TPrompt(args.d_model, num_hiddens, args.num_heads ,args.num_layers, 3, n_prefix_conv=64)
             # model.prompt_model.gcn_model.load_state_dict(torch.load('gcn_3layer.pt'))
 
-            model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
+            # model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
             
-            for name, parameters in model.prompt_model.graph_model.named_parameters():
-                parameters.requires_grad = False
-                
+            # for name, parameters in model.prompt_model.graph_model.named_parameters():
+                # parameters.requires_grad = False
             # if model.emb.weight.requires_grad:
             #     # print("emb forward", self.emb.weight.requires_grad)
             #     model.emb.weight.requires_grad = False

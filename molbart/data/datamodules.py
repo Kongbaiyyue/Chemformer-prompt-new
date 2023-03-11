@@ -393,7 +393,7 @@ class FineTuneReactionDataModule(_AbsDataModule):
             collate_output = self._collate_unified(batch)
             return collate_output
 
-        reacts_smiles, prods_smiles, type_tokens = tuple(zip(*batch))
+        reacts_smiles, prods_smiles = tuple(zip(*batch))
         reacts_output = self.tokeniser.tokenise(reacts_smiles, pad=True)
         prods_output = self.tokeniser.tokenise(prods_smiles, pad=True)
 
@@ -432,9 +432,6 @@ class FineTuneReactionDataModule(_AbsDataModule):
         prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
         prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
         prods_edge = torch.tensor(prods_edge, dtype=torch.float32)
-
-        type_tokens_list = [self.tokeniser.vocab.get(token, self.tokeniser.unk_id) for token in type_tokens]
-        type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
         # print("prods_adj shape", prods_adj.shape)
         # print("prods_atom shape", prods_atom.shape)
         # print("prods_edge shape", prods_edge.shape)
@@ -464,8 +461,7 @@ class FineTuneReactionDataModule(_AbsDataModule):
                 "prods_adj": prods_adj,
                 "prods_atom": prods_atom,
                 "prods_edge": prods_edge,
-                "lengths": lengths,
-                "type_tokens": type_tokens
+                "lengths": lengths
             }
 
         return collate_output

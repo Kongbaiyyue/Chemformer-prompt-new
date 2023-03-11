@@ -2,8 +2,8 @@
 
 python -m molbart.evaluate \
   --data_path ./data/uspto_50.pickle \
-  --model_path tb_logs/backward_prediction/version_81/checkpoints/last.ckpt \
-  --dataset uspto_50 \
+  --model_path tb_logs/backward_prediction/version_98/checkpoints/last.ckpt \
+  --dataset uspto_50_with_type \
   --task backward_prediction \
   --model_type bart \
   --batch_size 64 \

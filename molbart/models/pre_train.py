@@ -104,10 +104,9 @@ class _AbsTransformerModel(pl.LightningModule):
         self.train()
 
         model_output = self.forward(batch)
-        loss, type_loss = self._calc_loss(batch, model_output)
+        loss = self._calc_loss(batch, model_output)
 
         self.log("train_loss", loss, on_step=True, logger=True, sync_dist=True)
-        self.log("type_loss", type_loss, on_step=True, logger=True, sync_dist=True)
 
         return loss
 
@@ -371,7 +370,6 @@ class BARTModel(_AbsTransformerModel):
 
         self.token_fc = nn.Linear(d_model, vocab_size)
         self.loss_fn = nn.CrossEntropyLoss(reduction="none", ignore_index=pad_token_idx)
-        self.loss_type_fn = nn.CrossEntropyLoss(reduction="sum")
         self.log_softmax = nn.LogSoftmax(dim=2)
 
         # freeze encoder and decoder
@@ -396,8 +394,8 @@ class BARTModel(_AbsTransformerModel):
 
         # self.prompt_proj2 = nn.Linear(d_model, num_layers * 3 * d_model)
 
-        # num_hiddens = 256
-        # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
+        num_hiddens = 256
+        self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, n_prefix_conv=64)
 
         self.prompt_model = None
         self.n_layer = num_layers
@@ -441,11 +439,11 @@ class BARTModel(_AbsTransformerModel):
         #     self.token_fc.weight.requires_grad = False
         
         # # freeze gcn model
-        if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
-            # print("gcn pram", self.prompt_model.graph_model.n_emb.weight.requires_grad)
+        # if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
+        #     print("gcn pram", self.prompt_model.graph_model.n_emb.weight.requires_grad)
         
-            for name, parameters in self.prompt_model.graph_model.named_parameters():
-                parameters.requires_grad = False
+        #     for name, parameters in self.prompt_model.graph_model.named_parameters():
+        #         parameters.requires_grad = False
         
         encoder_embs = self._construct_input(encoder_input)
         decoder_embs = self._construct_input(decoder_input)
@@ -467,33 +465,24 @@ class BARTModel(_AbsTransformerModel):
         length = x["lengths"]
         adj = x["prods_adj"]
         prompt_embeds = self.prompt_model(atom, edge, length, n_adj=adj)
-        batch_size = prompt_embeds.shape[3]
 
         seq_len, _, _ = tuple(decoder_embs.size())
         tgt_mask = self._generate_square_subsequent_mask(seq_len, device=encoder_embs.device)
         memory = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask, prompt_embeds=prompt_embeds)
-        
         # memory = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
         model_output = self.decoder(
             decoder_embs,
-            memory[1:, :, :],
+            memory,
             tgt_mask=tgt_mask,
             tgt_key_padding_mask=decoder_pad_mask,
-            memory_key_padding_mask=encoder_pad_mask.clone()[:, 1:]
+            memory_key_padding_mask=encoder_pad_mask.clone()
         )
+
         token_output = self.token_fc(model_output)
-
-        # add learning type
-        # entity_len = atom.shape[1]
-        # type_embeds = prompt_embeds.clone()[0, 0, :, :, :].permute(1, 0, 2)[:, -1, :].reshape(batch_size, -1)
-        # type_smiles = self.prompt_model.token_fc(type_embeds)
-
-        type_smiles = self.token_fc(memory[0, :, :])
 
         output = {
             "model_output": model_output,
-            "token_output": token_output,
-            "type_smiles": type_smiles.squeeze()
+            "token_output": token_output
         }
 
         return output
@@ -592,17 +581,11 @@ class BARTModel(_AbsTransformerModel):
 
         tokens = batch_input["target"]
         pad_mask = batch_input["target_mask"]
-        type_tokens = batch_input["type_tokens"]
         token_output = model_output["token_output"]
-        type_smiles = model_output["type_smiles"]
-        
-        token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
-        type_loss = self.loss_type_fn(type_smiles, type_tokens)
-        # print("type_loss", type_loss)
-        loss = token_mask_loss + 50 * type_loss
 
-        # return token_mask_loss
-        return loss, type_loss
+        token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
+
+        return token_mask_loss
 
     def _calc_mask_loss(self, token_output, target, target_mask):
         """ Calculate the loss for the token prediction task
@@ -623,8 +606,7 @@ class BARTModel(_AbsTransformerModel):
 
         inv_target_mask = ~(target_mask > 0)
         num_tokens = inv_target_mask.sum()
-        # loss = loss.sum() / num_tokens
-        loss = loss.sum()
+        loss = loss.sum() / num_tokens
 
         return loss
 
@@ -657,8 +639,8 @@ class BARTModel(_AbsTransformerModel):
             "prods_edge": prods_edge,
             "lengths": lengths
         }
-        memory = self.encode(encode_input)[1:, :, :]
-        mem_mask = enc_mask.clone()[1:, :]
+        memory = self.encode(encode_input)
+        mem_mask = enc_mask.clone()
 
         _, batch_size, _ = tuple(memory.size())
 
@@ -688,89 +670,6 @@ class BARTModel(_AbsTransformerModel):
         model_output = self.decode(decode_input)
         return model_output
 
-    def _calc_type_token_acc(self, batch_input, model_output):
-        token_ids = batch_input["type_tokens"]
-        token_output = model_output["type_smiles"]
-
-        # target_mask = ~(target_mask > 0)
-        _, pred_ids = torch.max(token_output.float(), dim=1)
-        correct_ids = torch.eq(token_ids, pred_ids)
-        # correct_ids = correct_ids * target_mask
-
-        num_correct = correct_ids.sum().float()
-
-        # total = target_mask.sum().float()
-        total = token_ids.shape[0]
-
-        accuracy = num_correct / total
-        return accuracy
-    
-    def test_step(self, batch, batch_idx):
-        self.eval()
-
-        model_output = self.forward(batch)
-        target_smiles = batch["target_smiles"]
-
-        loss, type_loss = self._calc_loss(batch, model_output)
-        token_acc = self._calc_token_acc(batch, model_output)
-        reaction_type_acc = self._calc_type_token_acc(batch, model_output)
-        perplexity = self._calc_perplexity(batch, model_output)
-        mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.test_sampling_alg)
-        metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
-
-        test_outputs = {
-            "test_loss": loss.item(),
-            "test_token_acc": token_acc,
-            "reaction_type_acc": reaction_type_acc,
-            "test_perplexity": perplexity,
-            "test_invalid_smiles": metrics["invalid"]
-        }
-
-        if self.test_sampling_alg == "greedy":
-            test_outputs["test_molecular_accuracy"] = metrics["accuracy"]
-
-        elif self.test_sampling_alg == "beam":
-            test_outputs["test_molecular_accuracy"] = metrics["top_1_accuracy"]
-            test_outputs["test_molecular_top_1_accuracy"] = metrics["top_1_accuracy"]
-            test_outputs["test_molecular_top_2_accuracy"] = metrics["top_2_accuracy"]
-            test_outputs["test_molecular_top_3_accuracy"] = metrics["top_3_accuracy"]
-            test_outputs["test_molecular_top_5_accuracy"] = metrics["top_5_accuracy"]
-            test_outputs["test_molecular_top_10_accuracy"] = metrics["top_10_accuracy"]
-
-        else:
-            raise ValueError(f"Unknown test sampling algorithm, {self.test_sampling_alg}")
-
-        return test_outputs
-    
-    def validation_step(self, batch, batch_idx):
-        self.eval()
-
-        model_output = self.forward(batch)
-        target_smiles = batch["target_smiles"]
-
-        loss, type_loss = self._calc_loss(batch, model_output)
-        token_acc = self._calc_token_acc(batch, model_output)
-        reaction_type_acc = self._calc_type_token_acc(batch, model_output)
-        perplexity = self._calc_perplexity(batch, model_output)
-        mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.val_sampling_alg)
-        metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
-
-        mol_acc = torch.tensor(metrics["accuracy"], device=loss.device)
-        invalid = torch.tensor(metrics["invalid"], device=loss.device)
-
-        # Log for prog bar only
-        self.log("mol_acc", mol_acc, prog_bar=True, logger=False, sync_dist=True)
-        self.log("reaction_type_acc", reaction_type_acc, prog_bar=True, logger=False, sync_dist=True)
-
-        val_outputs = {
-            "val_loss": loss,
-            "val_token_acc": token_acc,
-            "reaction_type_acc":reaction_type_acc,
-            "perplexity": perplexity,
-            "val_molecular_accuracy": mol_acc,
-            "val_invalid_smiles": invalid
-        }
-        return val_outputs
 
 class UnifiedModel(_AbsTransformerModel):
     def __init__(
@@ -976,5 +875,3 @@ class UnifiedModel(_AbsTransformerModel):
         mask = torch.cat((enc_mask, dec_mask), dim=1)
         mask = mask.masked_fill(mask == 1, float("-inf"))
         return mask
-
-
