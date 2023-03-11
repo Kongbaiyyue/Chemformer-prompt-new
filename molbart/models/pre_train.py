@@ -397,7 +397,7 @@ class BARTModel(_AbsTransformerModel):
         # self.prompt_proj2 = nn.Linear(d_model, num_layers * 3 * d_model)
 
         # num_hiddens = 256
-        # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, n_prefix_conv=120)
+        # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
 
         self.prompt_model = None
         self.n_layer = num_layers
@@ -431,14 +431,14 @@ class BARTModel(_AbsTransformerModel):
         encoder_pad_mask = x["encoder_pad_mask"].transpose(0, 1)
         decoder_pad_mask = x["decoder_pad_mask"].transpose(0, 1)
         
-        if self.emb.weight.requires_grad:
-            # print("emb forward", self.emb.weight.requires_grad)
-            self.emb.weight.requires_grad = False
-            for name, parameters in self.encoder.named_parameters():
-                parameters.requires_grad = False
-            for name, parameters in self.decoder.named_parameters():
-                parameters.requires_grad = False
-            self.token_fc.weight.requires_grad = False
+        # if self.emb.weight.requires_grad:
+        #     # print("emb forward", self.emb.weight.requires_grad)
+        #     self.emb.weight.requires_grad = False
+        #     for name, parameters in self.encoder.named_parameters():
+        #         parameters.requires_grad = False
+        #     for name, parameters in self.decoder.named_parameters():
+        #         parameters.requires_grad = False
+        #     self.token_fc.weight.requires_grad = False
         
         # # freeze gcn model
         if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
