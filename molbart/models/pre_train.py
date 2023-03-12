@@ -397,7 +397,7 @@ class BARTModel(_AbsTransformerModel):
         num_hiddens = 256
         self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, n_prefix_conv=64)
 
-        self.prompt_model = None
+        # self.prompt_model = None
         self.n_layer = num_layers
         self.n_head = num_heads
         self.head_dim = d_model//self.n_head
@@ -875,3 +875,286 @@ class UnifiedModel(_AbsTransformerModel):
         mask = torch.cat((enc_mask, dec_mask), dim=1)
         mask = mask.masked_fill(mask == 1, float("-inf"))
         return mask
+
+
+
+
+class BERTModel(_AbsTransformerModel):
+    def __init__(
+        self,
+        decode_sampler,
+        pad_token_idx,
+        vocab_size, 
+        d_model,
+        num_layers, 
+        num_heads,
+        d_feedforward,
+        lr,
+        weight_decay,
+        activation,
+        num_steps,
+        max_seq_len,
+        schedule="cycle",
+        warm_up_steps=None,
+        dropout=0.1,
+        **kwargs
+    ):
+        super().__init__(
+            pad_token_idx,
+            vocab_size, 
+            d_model,
+            num_layers, 
+            num_heads,
+            d_feedforward,
+            lr,
+            weight_decay,
+            activation,
+            num_steps,
+            max_seq_len,
+            schedule,
+            warm_up_steps,
+            dropout,
+            **kwargs
+        )
+        
+        self.sampler = decode_sampler
+        self.val_sampling_alg = "greedy"
+        self.test_sampling_alg = "beam"
+        self.num_beams = 10
+
+        enc_norm = nn.LayerNorm(d_model)
+        enc_layer = MyPreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
+        self.encoder = MyTransformerEncoder(enc_layer, num_layers, norm=enc_norm)
+
+        self.token_fc = nn.Linear(d_model, vocab_size)
+        self.loss_fn = nn.CrossEntropyLoss(reduction="none", ignore_index=pad_token_idx)
+        self.log_softmax = nn.LogSoftmax(dim=2)
+
+        # freeze encoder and decoder
+        # self.emb.weight.requires_grad = False
+        # for name, parameters in self.encoder.named_parameters():
+        #     parameters.requires_grad = False
+        # for name, parameters in self.decoder.named_parameters():
+        #     parameters.requires_grad = False
+        # self.token_fc.weight.requires_grad = False
+
+
+        self.n_layer = num_layers
+        self.n_head = num_heads
+        self.head_dim = d_model//self.n_head
+        self.d_model = d_model
+        print("using prompt")
+        self._init_params()
+
+    def forward(self, x):
+        """ Apply SMILES strings to model
+
+        The dictionary returned will be passed to other functions, so its contents are fairly flexible,
+        except that it must contain the key "token_output" which is the output of the model 
+        (possibly after any fully connected layers) for each token.
+
+        Arg:
+            x (dict {
+                "encoder_input": tensor of token_ids of shape (src_len, batch_size),
+                "encoder_pad_mask": bool tensor of padded elems of shape (src_len, batch_size),
+                "decoder_input": tensor of decoder token_ids of shape (tgt_len, batch_size)
+                "decoder_pad_mask": bool tensor of decoder padding mask of shape (tgt_len, batch_size)
+            }):
+
+        Returns:
+            Output from model (dict containing key "token_output" and "model_output")
+        """
+        
+        encoder_input = x["encoder_input"]
+        decoder_input = x["decoder_input"]
+        encoder_pad_mask = x["encoder_pad_mask"].transpose(0, 1)
+        decoder_pad_mask = x["decoder_pad_mask"].transpose(0, 1)
+        
+        # if self.emb.weight.requires_grad:
+        #     # print("emb forward", self.emb.weight.requires_grad)
+        #     self.emb.weight.requires_grad = False
+        #     for name, parameters in self.encoder.named_parameters():
+        #         parameters.requires_grad = False
+        #     for name, parameters in self.decoder.named_parameters():
+        #         parameters.requires_grad = False
+        #     self.token_fc.weight.requires_grad = False
+        
+        # # freeze gcn model
+        # if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
+        #     print("gcn pram", self.prompt_model.graph_model.n_emb.weight.requires_grad)
+        
+        #     for name, parameters in self.prompt_model.graph_model.named_parameters():
+        #         parameters.requires_grad = False
+        
+        encoder_embs = self._construct_input(encoder_input)
+        decoder_embs = self._construct_input(decoder_input)
+        
+        # prefix_embeds = self.conv_prefix_proj(self.conv_prefix_embeds) + self.conv_prefix_embeds
+        # prefix_embeds = prefix_embeds.expand(encoder_input.shape[1], -1, -1)
+        # prompt_embeds = prefix_embeds
+        # prompt_embeds = self.prompt_proj2(prompt_embeds)
+        # # prompt_embeds = prompt_embeds.reshape(
+        # #     encoder_input.shape[1], 20, self.n_layer, 3, self.n_head, self.head_dim
+        # # ).permute(2, 3, 1, 0, 4, 5)  # (n_layer, n_block, prompt_len, batch_size, n_head, head_dim)
+        # prompt_embeds = prompt_embeds.reshape(
+        #     encoder_input.shape[1], 20, self.n_layer, 3, self.d_model
+        # ).permute(2, 3, 1, 0, 4)  # (n_layer, n_block, prompt_len, batch_size, d_model)
+
+        # graph prompt
+        atom = x["prods_atom"]
+        edge = x["prods_edge"]
+        length = x["lengths"]
+        adj = x["prods_adj"]
+        prompt_embeds = self.prompt_model(atom, edge, length, n_adj=adj)
+
+        seq_len, _, _ = tuple(decoder_embs.size())
+        tgt_mask = self._generate_square_subsequent_mask(seq_len, device=encoder_embs.device)
+        model_output = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask, prompt_embeds=prompt_embeds)
+        # memory = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
+
+        token_output = self.token_fc(model_output)
+
+        output = {
+            "model_output": model_output,
+            "token_output": token_output
+        }
+
+        return output
+
+    def encode(self, batch):
+        """ Construct the memory embedding for an encoder input
+
+        Args:
+            batch (dict {
+                "encoder_input": tensor of token_ids of shape (src_len, batch_size),
+                "encoder_pad_mask": bool tensor of padded elems of shape (src_len, batch_size),
+            })
+
+        Returns:
+            encoder memory (Tensor of shape (seq_len, batch_size, d_model))
+        """
+
+        encoder_input = batch["encoder_input"]
+        encoder_pad_mask = batch["encoder_pad_mask"].transpose(0, 1)
+        
+        encoder_embs = self._construct_input(encoder_input)
+
+        # prompt
+        # prefix_embeds = self.conv_prefix_proj(self.conv_prefix_embeds) + self.conv_prefix_embeds
+        # prefix_embeds = prefix_embeds.expand(encoder_input.shape[1], -1, -1)
+        # prompt_embeds = prefix_embeds
+        # prompt_embeds = self.prompt_proj2(prompt_embeds)
+        # # prompt_embeds = prompt_embeds.reshape(
+        # #     encoder_input.shape[1], 20, self.n_layer, 3, self.n_head, self.head_dim
+        # # ).permute(2, 3, 1, 0, 4, 5)  # (n_layer, n_block, prompt_len, batch_size, n_head, head_dim)
+        # prompt_embeds = prompt_embeds.reshape(
+        #     encoder_input.shape[1], 20, self.n_layer, 3, self.d_model
+        # ).permute(2, 3, 1, 0, 4)  # (n_layer, n_block, prompt_len, batch_size, d_model)
+        
+        # freeze gcn model
+        # if self.prompt_model.gcn_model.n_emb.weight.requires_grad == True:
+        #     print("gcn pram", self.prompt_model.gcn_model.n_emb.weight.requires_grad)
+        
+        #     for name, parameters in self.prompt_model.gcn_model.named_parameters():
+        #         parameters.requires_grad = False
+
+        # graph prompt
+        atom = batch["prods_atom"]
+        edge = batch["prods_edge"]
+        length = batch["lengths"]
+        adj = batch["prods_adj"]
+        prompt_embeds = self.prompt_model(atom, edge, length, n_adj=adj)
+
+
+        model_output = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask, prompt_embeds=prompt_embeds)
+        return model_output
+
+    def _calc_loss(self, batch_input, model_output):
+        """ Calculate the loss for the model
+
+        Args:
+            batch_input (dict): Input given to model,
+            model_output (dict): Output from model
+
+        Returns:
+            loss (singleton tensor),
+        """
+
+        tokens = batch_input["target"]
+        pad_mask = batch_input["target_mask"]
+        token_output = model_output["token_output"]
+
+        token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
+
+        return token_mask_loss
+
+    def _calc_mask_loss(self, token_output, target, target_mask):
+        """ Calculate the loss for the token prediction task
+
+        Args:
+            token_output (Tensor of shape (seq_len, batch_size, vocab_size)): token output from transformer
+            target (Tensor of shape (seq_len, batch_size)): Original (unmasked) SMILES token ids from the tokeniser
+            target_mask (Tensor of shape (seq_len, batch_size)): Pad mask for target tokens
+
+        Output:
+            loss (singleton Tensor): Loss computed using cross-entropy,
+        """
+
+        seq_len, batch_size = tuple(target.size())
+
+        token_pred = token_output.reshape((seq_len * batch_size, -1)).float()
+        loss = self.loss_fn(token_pred, target.reshape(-1)).reshape((seq_len, batch_size))
+
+        inv_target_mask = ~(target_mask > 0)
+        num_tokens = inv_target_mask.sum()
+        loss = loss.sum() / num_tokens
+
+        return loss
+
+def sample_molecules(self, batch_input, sampling_alg="greedy"):
+        """ Sample molecules from the model
+
+        Args:
+            batch_input (dict): Input given to model
+            sampling_alg (str): Algorithm to use to sample SMILES strings from model
+
+        Returns:
+            ([[str]], [[float]]): Tuple of molecule SMILES strings and log lhs (outer dimension is batch)
+        """
+
+        pass
+
+def validation_step(self, batch, batch_idx):
+        self.eval()
+
+        model_output = self.forward(batch)
+        target_smiles = batch["target_smiles"]
+
+        loss = self._calc_loss(batch, model_output)
+        token_acc = self._calc_token_acc(batch, model_output)
+        perplexity = self._calc_perplexity(batch, model_output)
+
+        val_outputs = {
+            "val_loss": loss,
+            "val_token_acc": token_acc,
+            "perplexity": perplexity,
+        }
+        return val_outputs
+
+def test_step(self, batch, batch_idx):
+    self.eval()
+
+    model_output = self.forward(batch)
+    target_smiles = batch["target_smiles"]
+
+    loss = self._calc_loss(batch, model_output)
+    token_acc = self._calc_token_acc(batch, model_output)
+    perplexity = self._calc_perplexity(batch, model_output)
+
+    test_outputs = {
+        "test_loss": loss.item(),
+        "test_token_acc": token_acc,
+        "test_perplexity": perplexity
+    }
+
+    return test_outputs

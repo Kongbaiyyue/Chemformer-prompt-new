@@ -5,7 +5,7 @@ python -m molbart.fine_tune \
   --data_path data/uspto_50.pickle \
   --model_path models/combined/step=1000000.ckpt \
   --task backward_prediction \
-  --epochs 300 \
+  --epochs 100 \
   --lr 0.001 \
   --schedule cycle \
   --batch_size 128 \

@@ -154,21 +154,11 @@ class Uspto50(ReactionDataset):
         if self.forward:
             react_str = f"{str(type_token)}{react_str}" if self.type_token else react_str
         else:
+            # prod_str = f"{str(type_token)}{prod_str}" if self.type_token else prod_str
+            type_token = "<RX_1><RX_2><RX_3><RX_4><RX_5><RX_6><RX_7><RX_8><RX_9><RX_10>"
             prod_str = f"{str(type_token)}{prod_str}" if self.type_token else prod_str
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-        prod_str = f"<UNUSED_188>{prod_str}"
-        return react_str, prod_str, type_token
-=======
-=======
->>>>>>> parent of 2fd7d58... add reaction type as prefix-prompt for fine tune Chemformer
 
         return react_str, prod_str
->>>>>>> parent of 2fd7d58... add reaction type as prefix-prompt for fine tune Chemformer
-=======
-        return react_str, prod_str
->>>>>>> parent of 2c2e977... use the last prompt to predict reaction type, which is composed of fusion and learnable prompt.
 
 
 class UsptoMixed(ReactionDataset):
