@@ -104,10 +104,9 @@ class _AbsTransformerModel(pl.LightningModule):
         self.train()
 
         model_output = self.forward(batch)
-        loss, type_loss = self._calc_loss(batch, model_output)
+        loss = self._calc_loss(batch, model_output)
 
         self.log("train_loss", loss, on_step=True, logger=True, sync_dist=True)
-        self.log("type_loss", type_loss, on_step=True, logger=True, sync_dist=True)
 
         return loss
 
@@ -133,8 +132,8 @@ class _AbsTransformerModel(pl.LightningModule):
             "val_loss": loss,
             "val_token_acc": token_acc,
             "perplexity": perplexity,
-            "val_molecular_accuracy": mol_acc,
-            "val_invalid_smiles": invalid
+            # "val_molecular_accuracy": mol_acc,
+            # "val_invalid_smiles": invalid
         }
         return val_outputs
 
@@ -178,6 +177,7 @@ class _AbsTransformerModel(pl.LightningModule):
         return test_outputs
 
     def test_epoch_end(self, outputs):
+        print(outputs)
         avg_outputs = self._avg_dicts(outputs)
         self._log_dict(avg_outputs)
 
@@ -399,7 +399,7 @@ class BARTModel(_AbsTransformerModel):
         # num_hiddens = 256
         # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
 
-        # self.prompt_model = None
+        self.prompt_model = None
         self.n_layer = num_layers
         self.n_head = num_heads
         self.head_dim = d_model//self.n_head
@@ -441,11 +441,11 @@ class BARTModel(_AbsTransformerModel):
         #     self.token_fc.weight.requires_grad = False
         
         # # freeze gcn model
-        if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
-            # print("gcn pram", self.prompt_model.graph_model.n_emb.weight.requires_grad)
+        # if self.prompt_model.graph_model.n_emb.weight.requires_grad == True:
+        #     # print("gcn pram", self.prompt_model.graph_model.n_emb.weight.requires_grad)
         
-            for name, parameters in self.prompt_model.graph_model.named_parameters():
-                parameters.requires_grad = False
+        #     for name, parameters in self.prompt_model.graph_model.named_parameters():
+        #         parameters.requires_grad = False
         
         encoder_embs = self._construct_input(encoder_input)
         decoder_embs = self._construct_input(decoder_input)
@@ -599,10 +599,11 @@ class BARTModel(_AbsTransformerModel):
         token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
         type_loss = self.loss_type_fn(type_smiles, type_tokens)
         # print("type_loss", type_loss)
-        loss = token_mask_loss + 40 * type_loss
+        # loss = token_mask_loss + 1 * type_loss
+        loss = type_loss
 
         # return token_mask_loss
-        return loss, type_loss
+        return loss
 
     def _calc_mask_loss(self, token_output, target, target_mask):
         """ Calculate the loss for the token prediction task
@@ -694,6 +695,43 @@ class BARTModel(_AbsTransformerModel):
 
         # target_mask = ~(target_mask > 0)
         _, pred_ids = torch.max(token_output.float(), dim=1)
+        
+        # print(token_ids.shape)
+        # zero = torch.zeros_like(token_ids)
+        
+        # class_1 = torch.where(pred_ids == 264, pred_ids, zero)
+        # class_2 = torch.where(pred_ids == 263, pred_ids, zero)
+        # class_3 = torch.where(pred_ids == 265, pred_ids, zero)
+        # class_4 = torch.where(pred_ids == 270, pred_ids, zero)
+        # class_5 = torch.where(pred_ids == 268, pred_ids, zero)
+        # class_6 = torch.where(pred_ids == 262, pred_ids, zero)
+        # class_7 = torch.where(pred_ids == 266, pred_ids, zero)
+        # class_8 = torch.where(pred_ids == 271, pred_ids, zero)
+        # class_9 = torch.where(pred_ids == 267, pred_ids, zero)
+        # class_10 = torch.where(pred_ids == 269, pred_ids, zero)
+
+        # # correct_1 = torch.eq(token_ids, class_1).sum().float() / torch.eq(class_1, 264).sum().float()
+        # # correct_2 = torch.eq(token_ids, class_2).sum().float() / torch.eq(class_1, 263).sum().float()
+        # # correct_3 = torch.eq(token_ids, class_3).sum().float() / torch.eq(class_1, 265).sum().float()
+        # # correct_4 = torch.eq(token_ids, class_4).sum().float() / torch.eq(class_1, 270).sum().float()
+        # # correct_5 = torch.eq(token_ids, class_5).sum().float() / torch.eq(class_1, 268).sum().float()
+        # # correct_6 = torch.eq(token_ids, class_6).sum().float() / torch.eq(class_1, 262).sum().float()
+        # # correct_7 = torch.eq(token_ids, class_7).sum().float() / torch.eq(class_1, 266).sum().float()
+        # # correct_8 = torch.eq(token_ids, class_8).sum().float() / torch.eq(class_1, 271).sum().float()
+        # # correct_9 = torch.eq(token_ids, class_9).sum().float() / torch.eq(class_1, 267).sum().float()
+        # # correct_10 = torch.eq(token_ids, class_10).sum().float() / torch.eq(class_1, 269).sum().float()
+        # # print(correct_1)
+        # correct_class = []
+        # num = [264, 263, 265, 270, 268, 262, 266, 271, 267, 269]
+        # token_class = [class_1, class_2, class_3, class_4, class_5, class_6, class_7, class_8, class_9, class_10]
+        # for i, token_cls in enumerate(token_class):
+        #     if torch.eq(token_cls, num[i]).sum() == 0:
+        #         correct_class.append(0.)
+        #     else:
+        #         correct_class.append(torch.eq(token_ids, token_cls).sum().float() / torch.eq(token_cls, num[i]).sum().float())
+
+        # correct_class = [correct_1, correct_2, correct_3, correct_4, correct_5, correct_6, correct_7, correct_8, correct_9, correct_10]
+    
         correct_ids = torch.eq(token_ids, pred_ids)
         # correct_ids = correct_ids * target_mask
 
@@ -704,6 +742,8 @@ class BARTModel(_AbsTransformerModel):
 
         accuracy = num_correct / total
         return accuracy
+
+        # return accuracy, correct_class
     
     def test_step(self, batch, batch_idx):
         self.eval()
@@ -711,34 +751,37 @@ class BARTModel(_AbsTransformerModel):
         model_output = self.forward(batch)
         target_smiles = batch["target_smiles"]
 
-        loss, type_loss = self._calc_loss(batch, model_output)
+        loss = self._calc_loss(batch, model_output)
         token_acc = self._calc_token_acc(batch, model_output)
-        reaction_type_acc = self._calc_type_token_acc(batch, model_output)
-        perplexity = self._calc_perplexity(batch, model_output)
-        mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.test_sampling_alg)
-        metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
+        # reaction_type_acc = self._calc_type_token_acc(batch, model_output)
+        reaction_type_acc, correct_class = self._calc_type_token_acc(batch, model_output)
+        # perplexity = self._calc_perplexity(batch, model_output)
+        # mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.test_sampling_alg)
+        # metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
 
         test_outputs = {
             "test_loss": loss.item(),
             "test_token_acc": token_acc,
             "reaction_type_acc": reaction_type_acc,
-            "test_perplexity": perplexity,
-            "test_invalid_smiles": metrics["invalid"]
+            # "test_perplexity": perplexity,
+            # "test_invalid_smiles": metrics["invalid"]
         }
+        for i, class_t in enumerate(correct_class):
+            test_outputs[str(i)] = class_t
 
-        if self.test_sampling_alg == "greedy":
-            test_outputs["test_molecular_accuracy"] = metrics["accuracy"]
+        # if self.test_sampling_alg == "greedy":
+        #     test_outputs["test_molecular_accuracy"] = metrics["accuracy"]
 
-        elif self.test_sampling_alg == "beam":
-            test_outputs["test_molecular_accuracy"] = metrics["top_1_accuracy"]
-            test_outputs["test_molecular_top_1_accuracy"] = metrics["top_1_accuracy"]
-            test_outputs["test_molecular_top_2_accuracy"] = metrics["top_2_accuracy"]
-            test_outputs["test_molecular_top_3_accuracy"] = metrics["top_3_accuracy"]
-            test_outputs["test_molecular_top_5_accuracy"] = metrics["top_5_accuracy"]
-            test_outputs["test_molecular_top_10_accuracy"] = metrics["top_10_accuracy"]
+        # elif self.test_sampling_alg == "beam":
+        #     test_outputs["test_molecular_accuracy"] = metrics["top_1_accuracy"]
+        #     test_outputs["test_molecular_top_1_accuracy"] = metrics["top_1_accuracy"]
+        #     test_outputs["test_molecular_top_2_accuracy"] = metrics["top_2_accuracy"]
+        #     test_outputs["test_molecular_top_3_accuracy"] = metrics["top_3_accuracy"]
+        #     test_outputs["test_molecular_top_5_accuracy"] = metrics["top_5_accuracy"]
+        #     test_outputs["test_molecular_top_10_accuracy"] = metrics["top_10_accuracy"]
 
-        else:
-            raise ValueError(f"Unknown test sampling algorithm, {self.test_sampling_alg}")
+        # else:
+        #     raise ValueError(f"Unknown test sampling algorithm, {self.test_sampling_alg}")
 
         return test_outputs
     
@@ -748,27 +791,27 @@ class BARTModel(_AbsTransformerModel):
         model_output = self.forward(batch)
         target_smiles = batch["target_smiles"]
 
-        loss, type_loss = self._calc_loss(batch, model_output)
+        loss = self._calc_loss(batch, model_output)
         token_acc = self._calc_token_acc(batch, model_output)
         reaction_type_acc = self._calc_type_token_acc(batch, model_output)
-        perplexity = self._calc_perplexity(batch, model_output)
-        mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.val_sampling_alg)
-        metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
+        # perplexity = self._calc_perplexity(batch, model_output)
+        # mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.val_sampling_alg)
+        # metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
 
-        mol_acc = torch.tensor(metrics["accuracy"], device=loss.device)
-        invalid = torch.tensor(metrics["invalid"], device=loss.device)
+        # mol_acc = torch.tensor(metrics["accuracy"], device=loss.device)
+        # invalid = torch.tensor(metrics["invalid"], device=loss.device)
 
         # Log for prog bar only
-        self.log("mol_acc", mol_acc, prog_bar=True, logger=False, sync_dist=True)
+        # self.log("mol_acc", mol_acc, prog_bar=True, logger=False, sync_dist=True)
         self.log("reaction_type_acc", reaction_type_acc, prog_bar=True, logger=False, sync_dist=True)
 
         val_outputs = {
             "val_loss": loss,
             "val_token_acc": token_acc,
             "reaction_type_acc":reaction_type_acc,
-            "perplexity": perplexity,
-            "val_molecular_accuracy": mol_acc,
-            "val_invalid_smiles": invalid
+            # "perplexity": perplexity,
+            "val_molecular_accuracy": 0.,
+            # "val_invalid_smiles": invalid
         }
         return val_outputs
 

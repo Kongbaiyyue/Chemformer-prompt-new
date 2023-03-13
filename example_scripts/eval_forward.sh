@@ -2,7 +2,7 @@
 
 python -m molbart.evaluate \
   --data_path ./data/uspto_50.pickle \
-  --model_path tb_logs/backward_prediction/version_115_reaction_type_weight_30_300epoch/checkpoints/last.ckpt \
+  --model_path tb_logs/backward_prediction/version_119/checkpoints/last.ckpt \
   --dataset uspto_50 \
   --task backward_prediction \
   --model_type bart \

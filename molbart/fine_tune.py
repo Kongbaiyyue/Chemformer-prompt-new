@@ -127,8 +127,8 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
 
             model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
             
-            for name, parameters in model.prompt_model.graph_model.named_parameters():
-                parameters.requires_grad = False
+            # for name, parameters in model.prompt_model.graph_model.named_parameters():
+            #     parameters.requires_grad = False
                 
             # if model.emb.weight.requires_grad:
             #     # print("emb forward", self.emb.weight.requires_grad)
@@ -169,7 +169,7 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
 
 
 def main(args):
-    util.seed_everything(73)
+    # util.seed_everything(73)
 
     if args.task in ["forward_prediction", "mol_opt"]:
         forward_pred = True
