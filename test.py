@@ -65,10 +65,5 @@ def combine_smiles():
 # # print(checkpoint2["state_dict"])
 # print(123)
 
-# model = TPrompt(512, 256, 8 , 6, 3, n_prefix_conv=256)
-# model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
-# print(321)
-
-a = torch.tensor([1, 2, 3])
-b = torch.eq(a, 1)
-print(b)
+a = {"1": 2}
+print(a.get("1"))

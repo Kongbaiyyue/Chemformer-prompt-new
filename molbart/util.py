@@ -13,9 +13,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, Callback
 
 from molbart.tokeniser import MolEncTokeniser
-from molbart.models.pre_train import BARTModel, UnifiedModel
+from molbart.models.pre_train import BARTModel, ReactionTypeModel, UnifiedModel
 from molbart.data.datasets import Chembl, USPTOPretrain, Uspto50, UsptoMixed, UsptoSep, MolOpt, Zinc, ZincSlice
-from molbart.data.datamodules import MoleculeDataModule, FineTuneReactionDataModule
+from molbart.data.datamodules import MoleculeDataModule, FineTuneReactionDataModule, reactionTypeDataModule
 
 
 # Default model hyperparams
@@ -208,7 +208,19 @@ def build_molecule_datamodule(args, dataset, tokeniser, augment=None):
 
 def build_reaction_datamodule(args, dataset, tokeniser, forward=True):
     uni_model = args.model_type == "unified"
-    dm = FineTuneReactionDataModule(
+    # dm = FineTuneReactionDataModule(
+    #     dataset,
+    #     tokeniser,
+    #     args.batch_size,
+    #     DEFAULT_MAX_SEQ_LEN,
+    #     forward_pred=forward,
+    #     val_idxs=dataset.val_idxs,
+    #     test_idxs=dataset.test_idxs,
+    #     train_token_batch_size=args.train_tokens,
+    #     num_buckets=args.num_buckets,
+    #     unified_model=uni_model
+    # )
+    dm = reactionTypeDataModule(
         dataset,
         tokeniser,
         args.batch_size,
@@ -231,7 +243,8 @@ def load_tokeniser(vocab_path, chem_token_start):
 def build_trainer(args):
     logger = TensorBoardLogger(args.log_dir, name=args.task)
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    checkpoint_cb = ModelCheckpoint(monitor="val_molecular_accuracy", save_last=True)
+    # checkpoint_cb = ModelCheckpoint(monitor="val_molecular_accuracy", save_last=True)
+    checkpoint_cb = ModelCheckpoint(monitor="reaction_type_acc", save_last=True)
 
     plugins = None
     accelerator = None
@@ -286,6 +299,14 @@ def load_bart(args, sampler):
 
 def load_unified(args, sampler):
     model = UnifiedModel.load_from_checkpoint(
+        args.model_path,
+        decode_sampler=sampler
+    )
+    model.eval()
+    return model
+
+def load_reactionType(args, sampler):
+    model = ReactionTypeModel.load_from_checkpoint(
         args.model_path,
         decode_sampler=sampler
     )

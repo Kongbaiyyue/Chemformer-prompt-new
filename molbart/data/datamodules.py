@@ -388,6 +388,184 @@ class FineTuneReactionDataModule(_AbsDataModule):
         self.forward_pred = forward_pred
         self.unified_model = unified_model
 
+        self.reaction_type = {"<RX_1>": 0, "<RX_2>": 1, "<RX_3>": 2, "<RX_4>": 3, "<RX_5>": 4, "<RX_6>": 5, "<RX_7>": 6, "<RX_8>": 7, "<RX_9>": 8, "<RX_10>": 9}
+
+    def _collate(self, batch, train=True):
+        if self.unified_model:
+            collate_output = self._collate_unified(batch)
+            return collate_output
+
+        reacts_smiles, prods_smiles, type_tokens = tuple(zip(*batch))
+        reacts_output = self.tokeniser.tokenise(reacts_smiles, pad=True)
+        prods_output = self.tokeniser.tokenise(prods_smiles, pad=True)
+
+        reacts_tokens = reacts_output["original_tokens"]
+        reacts_mask = reacts_output["original_pad_masks"]
+        reacts_tokens, reacts_mask = self._check_seq_len(reacts_tokens, reacts_mask)
+
+        prods_tokens = prods_output["original_tokens"]
+        prods_mask = prods_output["original_pad_masks"]
+        prods_tokens, prods_mask = self._check_seq_len(prods_tokens, prods_mask)
+
+        reacts_token_ids = self.tokeniser.convert_tokens_to_ids(reacts_tokens)
+        prods_token_ids = self.tokeniser.convert_tokens_to_ids(prods_tokens)
+
+        reacts_token_ids = torch.tensor(reacts_token_ids).transpose(0, 1)
+        reacts_pad_mask = torch.tensor(reacts_mask, dtype=torch.bool).transpose(0, 1)
+        prods_token_ids = torch.tensor(prods_token_ids).transpose(0, 1)
+        prods_pad_mask = torch.tensor(prods_mask, dtype=torch.bool).transpose(0, 1)
+
+
+        # prompt data (atom, edge, atom_length, adj)
+        # prods_adj = []
+        # atom_features = []
+        # edges = []
+        # lengths = []
+        # for smi in prods_smiles:
+        #     smi = smi.split(">", maxsplit=1)[1]
+        #     atom_feature, edge, adj = get_graph_features_from_smi(smi)
+        #     prods_adj.append(adj)
+        #     atom_features.append(atom_feature)
+        #     edges.append(edge)
+        #     lengths.append(len(atom_feature))
+        # prods_adj = self.tokeniser._pad_adj(prods_adj, 0)
+        # prods_atom = self.tokeniser._pad_atom(atom_features, 0)
+        # prods_edge = self.tokeniser._pad_edge(edges, 0)
+        # lengths = torch.tensor(lengths)
+        # prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
+        # prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
+        # prods_edge = torch.tensor(prods_edge, dtype=torch.float32)
+
+        # type_tokens_list = [self.tokeniser.vocab.get(token, self.tokeniser.unk_id) for token in type_tokens]
+        type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
+        type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
+        # print("prods_adj shape", prods_adj.shape)
+        # print("prods_atom shape", prods_atom.shape)
+        # print("prods_edge shape", prods_edge.shape)
+        # print("lengths shape", lengths.shape)
+
+        if self.forward_pred:
+            collate_output = {
+                "encoder_input": reacts_token_ids,
+                "encoder_pad_mask": reacts_pad_mask,
+                "decoder_input": prods_token_ids[:-1, :],
+                "decoder_pad_mask": prods_pad_mask[:-1, :],
+                "target": prods_token_ids.clone()[1:, :],
+                "target_mask": prods_pad_mask.clone()[1:, :],
+                "target_smiles": prods_smiles
+            }
+        else:
+            collate_output = {
+                "encoder_input": prods_token_ids,
+                "encoder_pad_mask": prods_pad_mask,
+                "decoder_input": reacts_token_ids[:-1, :],
+                "decoder_pad_mask": reacts_pad_mask[:-1, :],
+                "target": reacts_token_ids.clone()[1:, :],
+                "target_mask": reacts_pad_mask.clone()[1:, :],
+                "target_smiles": reacts_smiles,
+
+                # prompt
+                # "prods_adj": prods_adj,
+                # "prods_atom": prods_atom,
+                # "prods_edge": prods_edge,
+                # "lengths": lengths,
+                "type_tokens": type_tokens
+            }
+
+        return collate_output
+
+    def _collate_unified(self, batch):
+        reacts_smiles, prods_smiles = tuple(zip(*batch))
+        reacts_output = self.tokeniser.tokenise(reacts_smiles, pad=True)
+        prods_output = self.tokeniser.tokenise(prods_smiles, pad=True)
+
+        if self.forward_pred:
+            enc_tokens = reacts_output["original_tokens"]
+            enc_mask = reacts_output["original_pad_masks"]
+            dec_tokens = prods_output["original_tokens"]
+            dec_mask = prods_output["original_pad_masks"]
+            target_smiles = prods_smiles
+        else:
+            dec_tokens = reacts_output["original_tokens"]
+            dec_mask = reacts_output["original_pad_masks"]
+            enc_tokens = prods_output["original_tokens"]
+            enc_mask = prods_output["original_pad_masks"]
+            target_smiles = reacts_smiles
+
+        sep_token = self.tokeniser.sep_token
+        enc_tokens = [tokens + [sep_token] for tokens in enc_tokens]
+        enc_mask = [mask + [0] for mask in enc_mask]
+
+        # TODO Check length of combined sequence
+
+        enc_token_ids = self.tokeniser.convert_tokens_to_ids(enc_tokens)
+        dec_token_ids = self.tokeniser.convert_tokens_to_ids(dec_tokens)
+
+        enc_token_ids = torch.tensor(enc_token_ids).transpose(0, 1)
+        enc_mask = torch.tensor(enc_mask, dtype=torch.bool).transpose(0, 1)
+        dec_token_ids = torch.tensor(dec_token_ids).transpose(0, 1)[1:, :]
+        dec_mask = torch.tensor(dec_mask, dtype=torch.bool).transpose(0, 1)[1:, :]
+
+        enc_length, batch_size = tuple(enc_token_ids.shape)
+        dec_length, _ = tuple(dec_token_ids[:-1, :].shape)
+        att_mask = self._build_att_mask(enc_length - 1, dec_length + 1)
+
+        target = torch.cat((enc_token_ids.clone()[:-1, :], dec_token_ids.clone()), dim=0)
+        target_mask = self._build_target_mask(enc_length, dec_length, batch_size)
+        target_mask = target_mask + (torch.cat((enc_mask[:-1, :], dec_mask), dim=0))
+
+        collate_output = {
+            "encoder_input": enc_token_ids,
+            "encoder_pad_mask": enc_mask,
+            "decoder_input": dec_token_ids[:-1, :],
+            "decoder_pad_mask": dec_mask[:-1, :],
+            "attention_mask": att_mask,
+            "target": target,
+            "target_mask": target_mask,
+            "target_smiles": target_smiles
+        }
+        return collate_output
+
+
+class reactionTypeDataModule(_AbsDataModule):
+    def __init__(
+        self,
+        dataset: ReactionDataset,
+        tokeniser: MolEncTokeniser,
+        batch_size: int,
+        max_seq_len: int,
+        train_token_batch_size: Optional[int] = None,
+        num_buckets: Optional[int] = None,
+        forward_pred: Optional[bool] = True,
+        val_idxs: Optional[List[int]] = None, 
+        test_idxs: Optional[List[int]] = None,
+        split_perc: Optional[float] = 0.2,
+        pin_memory: Optional[bool] = True,
+        unified_model: Optional[bool] = False
+    ):
+        super().__init__(
+            dataset,
+            tokeniser,
+            batch_size,
+            max_seq_len,
+            train_token_batch_size=train_token_batch_size,
+            num_buckets=num_buckets,
+            val_idxs=val_idxs, 
+            test_idxs=test_idxs,
+            split_perc=split_perc,
+            pin_memory=pin_memory
+        )
+
+        if forward_pred:
+            print("Building data module for forward prediction task...")
+        else:
+            print("Building data module for backward prediction task...")
+
+        self.forward_pred = forward_pred
+        self.unified_model = unified_model
+
+        self.reaction_type = {"<RX_1>": 0, "<RX_2>": 1, "<RX_3>": 2, "<RX_4>": 3, "<RX_5>": 4, "<RX_6>": 5, "<RX_7>": 6, "<RX_8>": 7, "<RX_9>": 8, "<RX_10>": 9}
+
     def _collate(self, batch, train=True):
         if self.unified_model:
             collate_output = self._collate_unified(batch)
@@ -432,9 +610,9 @@ class FineTuneReactionDataModule(_AbsDataModule):
         lengths = torch.tensor(lengths)
         prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
         prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
-        prods_edge = torch.tensor(prods_edge, dtype=torch.float32)
+        prods_edge = torch.tensor(prods_edge, dtype=torch.float32) 
 
-        type_tokens_list = [self.tokeniser.vocab.get(token, self.tokeniser.unk_id) for token in type_tokens]
+        type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
         type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
         # print("prods_adj shape", prods_adj.shape)
         # print("prods_atom shape", prods_atom.shape)
@@ -455,11 +633,11 @@ class FineTuneReactionDataModule(_AbsDataModule):
             collate_output = {
                 "encoder_input": prods_token_ids,
                 "encoder_pad_mask": prods_pad_mask,
-                "decoder_input": reacts_token_ids[:-1, :],
-                "decoder_pad_mask": reacts_pad_mask[:-1, :],
-                "target": reacts_token_ids.clone()[1:, :],
-                "target_mask": reacts_pad_mask.clone()[1:, :],
-                "target_smiles": reacts_smiles,
+                # "decoder_input": reacts_token_ids[:-1, :],
+                # "decoder_pad_mask": reacts_pad_mask[:-1, :],
+                # "target": reacts_token_ids.clone()[1:, :],
+                # "target_mask": reacts_pad_mask.clone()[1:, :],
+                # "target_smiles": reacts_smiles,
 
                 # prompt
                 "prods_adj": prods_adj,

@@ -58,6 +58,8 @@ def main(args):
         model = util.load_bart(args, sampler)
     elif args.model_type == "unified":
         model = util.load_unified(args, sampler)
+    elif args.model_type == "reactionType":
+        model = util.load_reactionType(args, sampler)
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
 

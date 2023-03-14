@@ -1,9 +1,10 @@
 python -m molbart.fine_tune \
-  --dataset uspto_50 \
+  --model_type reactionType \
+  --dataset uspto_50_with_type \
   --data_path data/uspto_50.pickle \
   --model_path models/combined/step=1000000.ckpt \
   --task backward_prediction \
-  --epochs 300 \
+  --epochs 400 \
   --lr 0.001 \
   --schedule cycle \
   --batch_size 128 \

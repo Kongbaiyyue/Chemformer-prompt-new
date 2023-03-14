@@ -3,7 +3,7 @@ import argparse
 
 import molbart.util as util
 from molbart.decoder import DecodeSampler
-from molbart.models.pre_train import BARTModel, UnifiedModel
+from molbart.models.pre_train import BARTModel, ReactionTypeModel, UnifiedModel
 
 import torch.nn as nn
 import torch
@@ -49,7 +49,6 @@ def load_rand_model(args, extra_args, sampler, vocab_size, total_steps, pad_toke
             warm_up_steps=args.warm_up_steps,
             **extra_args
         )
-        
     elif args.model_type == "unified":
         model = UnifiedModel(
             sampler,
@@ -121,11 +120,13 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
             # prompt
             # vocab_size, num_hiddens, ffn_num_hiddens, num_heads = 88, 256, 512, 8
             # norm_shape, ffn_num_input, num_layers, dropout = [256], 256, 3, 0.2
+            model.type_token_fc = nn.Linear(args.d_model, 10)
+
             num_hiddens = 256
             model.prompt_model = TPrompt(args.d_model, num_hiddens, args.num_heads ,args.num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
             # model.prompt_model.gcn_model.load_state_dict(torch.load('gcn_3layer.pt'))
 
-            model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
+            # model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
             
             # for name, parameters in model.prompt_model.graph_model.named_parameters():
             #     parameters.requires_grad = False
@@ -148,7 +149,43 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
             # )
 
             # model.prompt_proj2 = nn.Linear(args.d_model, args.num_layers * 3 * args.d_model)
-            
+        
+        elif args.model_type == "reactionType":
+            checkpoint = pl_load(args.model_path, map_location=lambda storage, loc: storage)
+            model = ReactionTypeModel(
+                        sampler,
+                        pad_token_idx,
+                        vocab_size,
+                        args.d_model,
+                        args.num_layers,
+                        args.num_heads,
+                        args.d_feedforward,
+                        args.lr,
+                        DEFAULT_WEIGHT_DECAY,
+                        util.DEFAULT_ACTIVATION,
+                        total_steps,
+                        util.DEFAULT_MAX_SEQ_LEN,
+                        schedule=args.schedule,
+                        dropout=util.DEFAULT_DROPOUT,
+                        warm_up_steps=args.warm_up_steps,
+                        **extra_args
+                    )
+            model.load_state_dict(checkpoint["state_dict"], strict=True)
+
+            model.type_token_fc = nn.Linear(args.d_model, 10)
+
+            # prompt
+            # vocab_size, num_hiddens, ffn_num_hiddens, num_heads = 88, 256, 512, 8
+            # norm_shape, ffn_num_input, num_layers, dropout = [256], 256, 3, 0.2
+            num_hiddens = 256
+            model.prompt_model = TPrompt(args.d_model, num_hiddens, args.num_heads ,args.num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
+            # model.prompt_model.gcn_model.load_state_dict(torch.load('gcn_3layer.pt'))
+
+            model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
+
+            for name, parameters in model.prompt_model.graph_model.named_parameters():
+                parameters.requires_grad = False
+
         elif args.model_type == "unified":
             model = UnifiedModel.load_from_checkpoint(
                 args.model_path,

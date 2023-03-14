@@ -30,7 +30,10 @@ class MyTransformerEncoder(TransformerEncoder):
         output = src
         i = 0
         for mod in self.layers:
-            output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, prompt_embeds=prompt_embeds[i])
+            if prompt_embeds is not None:
+                output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, prompt_embeds=prompt_embeds[i])
+            else:
+                output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
             i += 1
 
         if self.norm is not None:
@@ -402,8 +405,12 @@ def multi_head_attention_forward(
 
     # update source sequence length after adjustments
     src_len = k.size(1)
-    prompt_padding = torch.zeros(key_padding_mask.shape[0], prompt_embeds.shape[1], device="cuda:0")
-    key_padding_mask = torch.cat([prompt_padding, key_padding_mask], dim=-1)
+
+    # add prompt_padding_mask
+    if prompt_embeds is not None:
+        prompt_padding = torch.zeros(key_padding_mask.shape[0], prompt_embeds.shape[1], device="cuda:0")
+        key_padding_mask = torch.cat([prompt_padding, key_padding_mask], dim=-1)
+    
     # merge key padding and attention masks
     if key_padding_mask is not None:
         assert key_padding_mask.shape == (bsz, src_len), \

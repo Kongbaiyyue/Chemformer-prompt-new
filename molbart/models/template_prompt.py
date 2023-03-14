@@ -93,13 +93,13 @@ class TPrompt(nn.Module):
         nodes_embeds, edges_embeds = self.graph_model(nodes, edges, lengths=n_lengths, adj=n_adj)
         return nodes_embeds
 
-    def forward(self, nodes, edges, n_lengths=None, n_adj=None, src=None, src_lengths=None, token_embeds=None, output_entity=False, use_conv_prefix=False):
+    def forward(self, nodes=None, edges=None, n_lengths=None, n_adj=None, src=None, src_lengths=None, token_embeds=None, output_entity=False, use_conv_prefix=False, batch_size=None):
         # batch_size, entity_embeds, entity_len, token_len = None, None, None, None
         batch_size, entity_len = nodes.shape[:2]
-        # if nodes is not None:
-        #     batch_size, entity_len = nodes.shape[:2]
-        #     entity_embeds = self.get_entity_embeds(nodes, edges, n_lengths=n_lengths, n_adj=n_adj)   # (batch_size, entity_len, hidden_size)
-        #     entity_embeds = self.node_proj1(entity_embeds)
+        if nodes is not None:
+            batch_size, entity_len = nodes.shape[:2]
+            entity_embeds = self.get_entity_embeds(nodes, edges, n_lengths=n_lengths, n_adj=n_adj)   # (batch_size, entity_len, hidden_size)
+            entity_embeds = self.node_proj1(entity_embeds)
         
         
         
@@ -126,18 +126,18 @@ class TPrompt(nn.Module):
         # prompt_embeds = token_weights @ token_embeds + entity_embeds
         # batch_size, prompt_len = prompt_embeds.shape[:2]
 
-        # prompt_embeds = entity_embeds
-        # prompt_len = entity_len
+        prompt_embeds = entity_embeds
+        prompt_len = entity_len
 
         # add learnable prompt
-        prefix_embeds = self.conv_prefix_proj(self.conv_prefix_embeds) + self.conv_prefix_embeds
-        # prefix_embeds = prefix_embeds.expand(prompt_embeds.shape[0], -1, -1)
-        prefix_embeds = prefix_embeds.expand(batch_size, -1, -1)
-        prompt_embeds = prefix_embeds
-        # prompt_embeds = torch.cat([prompt_embeds, prefix_embeds], dim=1)
+        # prefix_embeds = self.conv_prefix_proj(self.conv_prefix_embeds) + self.conv_prefix_embeds
+        # # prefix_embeds = prefix_embeds.expand(prompt_embeds.shape[0], -1, -1)
+        # prefix_embeds = prefix_embeds.expand(batch_size, -1, -1)
+        # prompt_embeds = prefix_embeds
+        # # prompt_embeds = torch.cat([prompt_embeds, prefix_embeds], dim=1)
         
-        # prompt_len += self.n_prefix_conv
-        prompt_len = self.n_prefix_conv
+        # # prompt_len += self.n_prefix_conv
+        # prompt_len = self.n_prefix_conv
 
         # prompt_embeds = entity_embeds
         # prompt_len = entity_len
