@@ -363,13 +363,15 @@ class BARTModel(_AbsTransformerModel):
         self.num_beams = 10
 
         enc_norm = nn.LayerNorm(d_model)
-        enc_layer = MyPreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
+        # enc_layer = MyPreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
+        # self.encoder = MyTransformerEncoder(enc_layer, num_layers, norm=enc_norm)
+        enc_layer = PreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
         self.encoder = MyTransformerEncoder(enc_layer, num_layers, norm=enc_norm)
 
         dec_norm = nn.LayerNorm(d_model)
         dec_layer = PreNormDecoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
-        # self.decoder = nn.TransformerDecoder(dec_layer, num_layers, norm=dec_norm)
-        self.decoder = MyTransformerDecoder(dec_layer, num_layers, norm=dec_norm)
+        self.decoder = nn.TransformerDecoder(dec_layer, num_layers, norm=dec_norm)
+        # self.decoder = MyTransformerDecoder(dec_layer, num_layers, norm=dec_norm)
 
         self.token_fc = nn.Linear(d_model, vocab_size)
         self.loss_fn = nn.CrossEntropyLoss(reduction="none", ignore_index=pad_token_idx)
@@ -404,24 +406,6 @@ class BARTModel(_AbsTransformerModel):
 
         # self.prompt_model = None
 
-        # self.reaction_type_model = ReactionTypeModel(
-        #                     decode_sampler,
-        #                     pad_token_idx,
-        #                     vocab_size, 
-        #                     d_model,
-        #                     num_layers, 
-        #                     num_heads,
-        #                     d_feedforward,
-        #                     lr,
-        #                     weight_decay,
-        #                     activation,
-        #                     num_steps,
-        #                     max_seq_len,
-        #                     schedule="cycle",
-        #                     warm_up_steps=None,
-        #                     dropout=0.1,
-        #                     **kwargs
-        #                 )
         # self.type_token_fc = nn.Linear(d_model, 10)
     
         self.n_layer = num_layers
@@ -511,14 +495,12 @@ class BARTModel(_AbsTransformerModel):
         tgt_mask = self._generate_square_subsequent_mask(seq_len, device=encoder_embs.device)
         # memory = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask, prompt_embeds=prompt_embeds)
         
-        memory, half_feature = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
-        model_output, att = self.decoder(
+        memory = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
+        model_output = self.decoder(
             decoder_embs,
-            # memory[1:, :, :],
             memory,
             tgt_mask=tgt_mask,
             tgt_key_padding_mask=decoder_pad_mask,
-            # memory_key_padding_mask=encoder_pad_mask.clone()[:, 1:]
             memory_key_padding_mask=encoder_pad_mask.clone()
         )
         token_output = self.token_fc(model_output)
@@ -528,17 +510,9 @@ class BARTModel(_AbsTransformerModel):
         # type_embeds = prompt_embeds.clone()[0, 0, :, :, :].permute(1, 0, 2)[:, -1, :].reshape(batch_size, -1)
         # type_smiles = self.prompt_model.token_fc(type_embeds)
 
-        # predict reaction type
-        # type_smiles = self.token_fc(memory[0, :, :])
-        type_smiles = self.type_token_fc(half_feature[0, :, :])
-
         output = {
             "model_output": model_output,
             "token_output": token_output,
-            "type_smiles": type_smiles.squeeze(),
-            # "type_smiles": type_token,
-            # "token_acc_index": token_acc_index
-            "att": att
         }
 
         return output
@@ -558,13 +532,6 @@ class BARTModel(_AbsTransformerModel):
 
         encoder_input = batch["encoder_input"]
         encoder_pad_mask = batch["encoder_pad_mask"].transpose(0, 1)
-
-        # type_token = self.reaction_type_model(batch)["type_smiles"]
-        # _, pred_ids = torch.max(type_token.float(), dim=1)
-        # # print("pred_ids", pred_ids)
-        
-        # # print("pred_ids:", pred_ids.shape)
-        # encoder_input[0, :] = (pred_ids + 262)
         
         encoder_embs = self._construct_input(encoder_input)
 
@@ -600,7 +567,7 @@ class BARTModel(_AbsTransformerModel):
 
         # model_output = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask, prompt_embeds=prompt_embeds)
 
-        model_output, half_feature = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
+        model_output = self.encoder(encoder_embs, src_key_padding_mask=encoder_pad_mask)
         return model_output
 
     def decode(self, batch):
@@ -625,7 +592,7 @@ class BARTModel(_AbsTransformerModel):
         seq_len, _, _ = tuple(decoder_embs.size())
         tgt_mask = self._generate_square_subsequent_mask(seq_len, device=decoder_embs.device)
 
-        model_output, att = self.decoder(
+        model_output = self.decoder(
             decoder_embs, 
             memory_input,
             tgt_key_padding_mask=decoder_pad_mask,
@@ -649,36 +616,23 @@ class BARTModel(_AbsTransformerModel):
 
         tokens = batch_input["target"]
         pad_mask = batch_input["target_mask"]
-        type_tokens = batch_input["type_tokens"]
-        # cross_mask = batch_input["cross_mask"]
+        # type_tokens = batch_input["type_tokens"]
         token_output = model_output["token_output"]
-        # token_acc_index = model_output["token_acc_index"]
-        type_smiles = model_output["type_smiles"]
-        # att = model_output["att"]
+        # type_smiles = model_output["type_smiles"]
         
-        token_mask_loss = self._calc_mask_loss(token_output, tokens, pad_mask)
-        type_loss = self.loss_type_fn(type_smiles, type_tokens)
+        loss, token_mask_loss, type_loss  = self._calc_mask_loss(token_output, tokens, pad_mask)
+        # type_loss = self.loss_type_fn(type_smiles, type_tokens)
         seq_len, batch_size = tuple(tokens.size())
         # print(type_loss.shape)
-        type_loss = type_loss.sum() / batch_size
+        # type_loss = type_loss.sum() / batch_size
 
-        # compute cross attn loss
-        # print("att shape", att.shape)
-        # print("cross_mask shape", cross_mask.shape)
-        # attns_shape = att.permute(0, 2, 1)[:, 1:-1, 1:]
-        # attns_masked = attns_shape.masked_fill(~cross_mask.bool(),
-        #                                         0.0)
-        # cross_mask = cross_mask.float()
-        # cross_loss = self.loss_attn(attns_masked, cross_mask)
-
-        # print("type_loss", type_loss)
-        loss = token_mask_loss + 10 * type_loss
+        # loss = token_mask_loss + type_loss
         # loss = token_mask_loss
         # loss = type_loss
         # loss = cross_loss + token_mask_loss
 
         # return token_mask_loss
-        return loss, token_mask_loss, 10 * type_loss
+        return loss, token_mask_loss, type_loss
 
     def _calc_mask_loss(self, token_output, target, target_mask):
         """ Calculate the loss for the token prediction task
@@ -700,7 +654,6 @@ class BARTModel(_AbsTransformerModel):
         inv_target_mask = ~(target_mask > 0)
         num_tokens = inv_target_mask.sum()
         loss = loss.sum() / num_tokens
-        # loss = loss.sum()
 
         return loss
 
@@ -733,9 +686,7 @@ class BARTModel(_AbsTransformerModel):
             # "prods_edge": prods_edge,
             # "lengths": lengths
         }
-        # memory = self.encode(encode_input)[1:, :, :]
         memory = self.encode(encode_input)
-        # mem_mask = enc_mask.clone()[1:, :]
         mem_mask = enc_mask.clone()
 
         _, batch_size, _ = tuple(memory.size())
@@ -765,62 +716,6 @@ class BARTModel(_AbsTransformerModel):
         }
         model_output = self.decode(decode_input)
         return model_output
-
-    def _calc_type_token_acc(self, batch_input, model_output):
-        token_ids = batch_input["type_tokens"]
-        token_output = model_output["type_smiles"]
-
-        # target_mask = ~(target_mask > 0)
-        _, pred_ids = torch.max(token_output.float(), dim=1)
-        
-        # print(token_ids.shape)
-        # zero = torch.zeros_like(token_ids)
-        
-        # class_1 = torch.where(pred_ids == 264, pred_ids, zero)
-        # class_2 = torch.where(pred_ids == 263, pred_ids, zero)
-        # class_3 = torch.where(pred_ids == 265, pred_ids, zero)
-        # class_4 = torch.where(pred_ids == 270, pred_ids, zero)
-        # class_5 = torch.where(pred_ids == 268, pred_ids, zero)
-        # class_6 = torch.where(pred_ids == 262, pred_ids, zero)
-        # class_7 = torch.where(pred_ids == 266, pred_ids, zero)
-        # class_8 = torch.where(pred_ids == 271, pred_ids, zero)
-        # class_9 = torch.where(pred_ids == 267, pred_ids, zero)
-        # class_10 = torch.where(pred_ids == 269, pred_ids, zero)
-
-        # # correct_1 = torch.eq(token_ids, class_1).sum().float() / torch.eq(class_1, 264).sum().float()
-        # # correct_2 = torch.eq(token_ids, class_2).sum().float() / torch.eq(class_1, 263).sum().float()
-        # # correct_3 = torch.eq(token_ids, class_3).sum().float() / torch.eq(class_1, 265).sum().float()
-        # # correct_4 = torch.eq(token_ids, class_4).sum().float() / torch.eq(class_1, 270).sum().float()
-        # # correct_5 = torch.eq(token_ids, class_5).sum().float() / torch.eq(class_1, 268).sum().float()
-        # # correct_6 = torch.eq(token_ids, class_6).sum().float() / torch.eq(class_1, 262).sum().float()
-        # # correct_7 = torch.eq(token_ids, class_7).sum().float() / torch.eq(class_1, 266).sum().float()
-        # # correct_8 = torch.eq(token_ids, class_8).sum().float() / torch.eq(class_1, 271).sum().float()
-        # # correct_9 = torch.eq(token_ids, class_9).sum().float() / torch.eq(class_1, 267).sum().float()
-        # # correct_10 = torch.eq(token_ids, class_10).sum().float() / torch.eq(class_1, 269).sum().float()
-        # # print(correct_1)
-        # correct_class = []
-        # num = [264, 263, 265, 270, 268, 262, 266, 271, 267, 269]
-        # token_class = [class_1, class_2, class_3, class_4, class_5, class_6, class_7, class_8, class_9, class_10]
-        # for i, token_cls in enumerate(token_class):
-        #     if torch.eq(token_cls, num[i]).sum() == 0:
-        #         correct_class.append(0.)
-        #     else:
-        #         correct_class.append(torch.eq(token_ids, token_cls).sum().float() / torch.eq(token_cls, num[i]).sum().float())
-
-        # correct_class = [correct_1, correct_2, correct_3, correct_4, correct_5, correct_6, correct_7, correct_8, correct_9, correct_10]
-    
-        correct_ids = torch.eq(token_ids, pred_ids)
-        # correct_ids = correct_ids * target_mask
-
-        num_correct = correct_ids.sum().float()
-
-        # total = target_mask.sum().float()
-        total = token_ids.shape[0]
-
-        accuracy = num_correct / total
-        return accuracy
-
-        # return accuracy, correct_class
     
     def test_step(self, batch, batch_idx):
         self.eval()
@@ -831,10 +726,8 @@ class BARTModel(_AbsTransformerModel):
         loss, token_mask_loss, type_loss = self._calc_loss(batch, model_output)
         token_acc = self._calc_token_acc(batch, model_output)
         reaction_type_acc = self._calc_type_token_acc(batch, model_output)
-        # reaction_type_acc, correct_class = self._calc_type_token_acc(batch, model_output)
         perplexity = self._calc_perplexity(batch, model_output)
         mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.test_sampling_alg)
-        # print(mol_strs)
         metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
 
         test_outputs = {
@@ -844,8 +737,6 @@ class BARTModel(_AbsTransformerModel):
             "test_perplexity": perplexity,
             "test_invalid_smiles": metrics["invalid"]
         }
-        # for i, class_t in enumerate(correct_class):
-        #     test_outputs[str(i)] = class_t
 
         if self.test_sampling_alg == "greedy":
             test_outputs["test_molecular_accuracy"] = metrics["accuracy"]
@@ -904,7 +795,6 @@ class BARTModel(_AbsTransformerModel):
 
         model_output = self.forward(batch)
         loss, token_mask_loss, type_loss = self._calc_loss(batch, model_output)
-        # type_acc = self._calc_type_token_acc(batch, model_output)
 
         self.log("t_l", token_mask_loss, prog_bar=True, logger=False, sync_dist=True)
         self.log("ty_l", type_loss, prog_bar=True, logger=False, sync_dist=True)
@@ -913,7 +803,6 @@ class BARTModel(_AbsTransformerModel):
             "loss": loss,
             "train_loss": token_mask_loss,
             "type_loss": type_loss
-            # "type_acc": type_acc
         }
         return train_output
     
