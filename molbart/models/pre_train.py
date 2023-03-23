@@ -672,13 +672,13 @@ class BARTModel(_AbsTransformerModel):
         # cross_loss = self.loss_attn(attns_masked, cross_mask)
 
         # print("type_loss", type_loss)
-        loss = token_mask_loss + 10 * type_loss
+        loss = token_mask_loss + 0.1 * type_loss
         # loss = token_mask_loss
         # loss = type_loss
         # loss = cross_loss + token_mask_loss
 
         # return token_mask_loss
-        return loss, token_mask_loss, 10 * type_loss
+        return loss, token_mask_loss, 0.1 * type_loss
 
     def _calc_mask_loss(self, token_output, target, target_mask):
         """ Calculate the loss for the token prediction task
@@ -885,6 +885,8 @@ class BARTModel(_AbsTransformerModel):
 
         val_outputs = {
             "val_loss": loss,
+            "val_token_mask_loss": token_mask_loss,
+            "val_type_loss": type_loss,
             "val_token_acc": token_acc,
             "reaction_type_acc":reaction_type_acc,
             "perplexity": perplexity,
@@ -895,7 +897,8 @@ class BARTModel(_AbsTransformerModel):
     
     def validation_epoch_end(self, outputs):
         avg_outputs = self._avg_dicts(outputs)
-        path = "loss_logs/val_avg_type_loss_weight_10.txt"
+        print("avg_outputs:", avg_outputs)
+        path = "loss_logs/val_avg_type_loss_weight_0.1.txt"
         self.save_loss(avg_outputs, path)
         self._log_dict(avg_outputs)
     
@@ -920,7 +923,7 @@ class BARTModel(_AbsTransformerModel):
     def training_epoch_end(self, outputs):
         # print(outputs[0].keys())
         avg_outputs = self._avg_dicts(outputs)
-        path = "loss_logs/avg_type_loss_weight_10.txt"
+        path = "loss_logs/avg_type_loss_weight_0.1.txt"
         self.save_loss(avg_outputs, path)
         self._log_dict(avg_outputs)
 
@@ -929,6 +932,8 @@ class BARTModel(_AbsTransformerModel):
             f.write("epoch " + str(self.current_epoch) + ":\n")
             for key, val in data.items():
                 if key == "train_loss" or key == "type_loss":
+                    f.write(key + ": " + str(val) + "\n")
+                elif key == "val_loss" or key == "val_token_mask_loss" or key == "val_type_loss":
                     f.write(key + ": " + str(val) + "\n")
 
 
