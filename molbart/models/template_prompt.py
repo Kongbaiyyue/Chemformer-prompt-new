@@ -88,6 +88,17 @@ class TPrompt(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size // 2, hidden_size)
         )
+        
+        self._init_params()
+
+    def _init_params(self):
+        """
+        Apply Xavier uniform initialisation of learnable weights
+        """
+
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
     def get_entity_embeds(self, nodes, edges, n_lengths=None, n_adj=None):
         nodes_embeds, edges_embeds = self.graph_model(nodes, edges, lengths=n_lengths, adj=n_adj)
@@ -134,7 +145,7 @@ class TPrompt(nn.Module):
         # # prefix_embeds = prefix_embeds.expand(prompt_embeds.shape[0], -1, -1)
         # prefix_embeds = prefix_embeds.expand(batch_size, -1, -1)
         # prompt_embeds = prefix_embeds
-        # # prompt_embeds = torch.cat([prompt_embeds, prefix_embeds], dim=1)
+        # prompt_embeds = torch.cat([prompt_embeds, prefix_embeds], dim=1)
         
         # # prompt_len += self.n_prefix_conv
         # prompt_len = self.n_prefix_conv

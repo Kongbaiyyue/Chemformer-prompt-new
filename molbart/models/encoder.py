@@ -29,17 +29,22 @@ class MyTransformerEncoder(TransformerEncoder):
         """
         output = src
         i = 0
+        half_layer = len(self.layers) / 2 - 1
+        half_feature = []
         for mod in self.layers:
             if prompt_embeds is not None:
                 output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, prompt_embeds=prompt_embeds[i])
             else:
                 output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+            
+            if i == 5:
+                half_feature = output
             i += 1
 
         if self.norm is not None:
             output = self.norm(output)
 
-        return output
+        return output, half_feature
 
 
 class MyPreNormEncoderLayer(nn.TransformerEncoderLayer):

@@ -208,19 +208,7 @@ def build_molecule_datamodule(args, dataset, tokeniser, augment=None):
 
 def build_reaction_datamodule(args, dataset, tokeniser, forward=True):
     uni_model = args.model_type == "unified"
-    # dm = FineTuneReactionDataModule(
-    #     dataset,
-    #     tokeniser,
-    #     args.batch_size,
-    #     DEFAULT_MAX_SEQ_LEN,
-    #     forward_pred=forward,
-    #     val_idxs=dataset.val_idxs,
-    #     test_idxs=dataset.test_idxs,
-    #     train_token_batch_size=args.train_tokens,
-    #     num_buckets=args.num_buckets,
-    #     unified_model=uni_model
-    # )
-    dm = reactionTypeDataModule(
+    dm = FineTuneReactionDataModule(
         dataset,
         tokeniser,
         args.batch_size,
@@ -232,6 +220,18 @@ def build_reaction_datamodule(args, dataset, tokeniser, forward=True):
         num_buckets=args.num_buckets,
         unified_model=uni_model
     )
+    # dm = reactionTypeDataModule(
+    #     dataset,
+    #     tokeniser,
+    #     args.batch_size,
+    #     DEFAULT_MAX_SEQ_LEN,
+    #     forward_pred=forward,
+    #     val_idxs=dataset.val_idxs,
+    #     test_idxs=dataset.test_idxs,
+    #     train_token_batch_size=args.train_tokens,
+    #     num_buckets=args.num_buckets,
+    #     unified_model=uni_model
+    # )
     return dm
 
 
@@ -243,8 +243,8 @@ def load_tokeniser(vocab_path, chem_token_start):
 def build_trainer(args):
     logger = TensorBoardLogger(args.log_dir, name=args.task)
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    # checkpoint_cb = ModelCheckpoint(monitor="val_molecular_accuracy", save_last=True)
-    checkpoint_cb = ModelCheckpoint(monitor="reaction_type_acc", save_last=True)
+    checkpoint_cb = ModelCheckpoint(monitor="val_molecular_accuracy", save_last=True)
+    # checkpoint_cb = ModelCheckpoint(monitor="reaction_type_acc", save_last=True)
 
     plugins = None
     accelerator = None
@@ -313,6 +313,21 @@ def load_reactionType(args, sampler):
     model.eval()
     return model
 
+
+def load_bartAddReactionType(args, sampler):
+    model = BARTModel.load_from_checkpoint(
+        args.model_path,
+        decode_sampler=sampler,
+        strict=False
+    )
+    
+    
+    model.reaction_type_model = ReactionTypeModel.load_from_checkpoint(
+        args.reaction_model_path,
+    )
+    model.reaction_type_model.eval()
+    model.eval()
+    return model
 
 def calc_train_steps(args, dm):
     dm.setup()

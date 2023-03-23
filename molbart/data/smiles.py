@@ -4,6 +4,7 @@ import pickle
 
 import torch
 from rdkit import Chem
+from rdkit.Chem.rdFMCS import FindMCS
 from tqdm import tqdm
 
 import numpy as np
@@ -98,6 +99,82 @@ def get_graph_features_from_smi(smi):
 
     return atom_features, edges, adjacencys
 
+
+
+def smi_tokenizer(smi):
+    """
+    Tokenize a SMILES molecule or reaction
+    """
+    import re
+
+    pattern = "(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|-|\+|\\\\|\/|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
+    regex = re.compile(pattern)
+    tokens = [token for token in regex.findall(smi)]
+    assert smi == ''.join(tokens)
+    return ' '.join(tokens)
+
+
+def get_atom_map(src, tgt):
+    src = smi_tokenizer(src)
+    tgt = smi_tokenizer(tgt)
+
+    src_chars = src.strip().split(' ')
+    tgt_chars = tgt.strip().split(' ')
+    if src[0] == '<':
+        src_smi = ''.join(src_chars[1:])
+    else:
+        src_smi = ''.join(src_chars)
+    tgt_smi = ''.join(tgt_chars)
+    tgt_mols = Chem.MolFromSmiles(tgt_smi)
+    tgt_smis = tgt_smi.split('.')
+    src_mol = Chem.MolFromSmiles(src_smi)
+    # atom_map = torch.zeros(src_mol.GetNumAtoms(), tgt_mols.GetNumAtoms())
+    atom_map = np.zeros((src_mol.GetNumAtoms(), tgt_mols.GetNumAtoms()), dtype=int)
+    # cross_attn = torch.zeros(len(src_chars), len(tgt_chars))
+    cross_attn = np.zeros((len(src_chars), len(tgt_chars)), dtype=int)
+    not_atom_indices_src = list()
+    atom_indices_src = list()
+    pad_indices_src = list()
+    not_atom_indices_tgt = list()
+    atom_indices_tgt = list()
+    pad_indices_tgt = list()
+    for smi in tgt_smis:
+        tgt_mol = Chem.MolFromSmiles(smi)
+        mols = [src_mol, tgt_mol]
+        result = FindMCS(mols, timeout=10)
+        result_mol = Chem.MolFromSmarts(result.smartsString)
+        src_mat = src_mol.GetSubstructMatches(result_mol)
+        tgt_mat = tgt_mols.GetSubstructMatches(result_mol)
+        if len(src_mat) > 0 and len(tgt_mat) > 0:
+            for i, j in zip(src_mat[0], tgt_mat[0]):
+                atom_map[i, j] = 1
+    # match = atom_map.sum(0)
+    # for i in range(match.size(0)):
+    #     if match[i] == 0:
+    #         atom_map[:, i] = 1
+
+    for j, cha in enumerate(src_chars):
+        if (len(cha) == 1 and not cha.isalpha()) or (len(cha) > 1 and cha[0] not in ['[', 'B', 'C']):
+            not_atom_indices_src.append(j)
+        else:
+            atom_indices_src.append(j)
+    for j, cha in enumerate(tgt_chars):
+        if (len(cha) == 1 and not cha.isalpha()) or (len(cha) > 1 and cha[0] not in ['[', 'B', 'C']):
+            not_atom_indices_tgt.append(j)
+        else:
+            atom_indices_tgt.append(j)
+    for x in range(len(src_chars)):
+        for y in range(len(tgt_chars)):
+            if x in pad_indices_src or y in pad_indices_tgt:
+                cross_attn[x, y] = 0
+            elif x in atom_indices_src and y in atom_indices_tgt:
+                cross_attn[x, y] = atom_map[atom_indices_src.index(x), atom_indices_tgt.index(y)]
+            elif x in not_atom_indices_src and y in not_atom_indices_tgt:
+                cross_attn[:, y] = 0
+                cross_attn[x, :] = 0
+                cross_attn[x, y] = 0
+    cross_attn = cross_attn.tolist()
+    return cross_attn
 
 
 

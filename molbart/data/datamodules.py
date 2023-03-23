@@ -12,7 +12,7 @@ from molbart.tokeniser import MolEncTokeniser
 from molbart.data.util import TokenSampler
 from molbart.data.datasets import MoleculeDataset, ReactionDataset
 
-from molbart.data.smiles import get_graph_features_from_smi
+from molbart.data.smiles import get_graph_features_from_smi, get_atom_map
 
 
 class _AbsDataModule(pl.LightningDataModule):
@@ -415,26 +415,44 @@ class FineTuneReactionDataModule(_AbsDataModule):
         prods_token_ids = torch.tensor(prods_token_ids).transpose(0, 1)
         prods_pad_mask = torch.tensor(prods_mask, dtype=torch.bool).transpose(0, 1)
 
-
+        # print("product:", prods_smiles)
         # prompt data (atom, edge, atom_length, adj)
         # prods_adj = []
         # atom_features = []
         # edges = []
         # lengths = []
-        # for smi in prods_smiles:
-        #     smi = smi.split(">", maxsplit=1)[1]
-        #     atom_feature, edge, adj = get_graph_features_from_smi(smi)
-        #     prods_adj.append(adj)
-        #     atom_features.append(atom_feature)
-        #     edges.append(edge)
-        #     lengths.append(len(atom_feature))
-        # prods_adj = self.tokeniser._pad_adj(prods_adj, 0)
-        # prods_atom = self.tokeniser._pad_atom(atom_features, 0)
-        # prods_edge = self.tokeniser._pad_edge(edges, 0)
-        # lengths = torch.tensor(lengths)
-        # prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
-        # prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
-        # prods_edge = torch.tensor(prods_edge, dtype=torch.float32)
+        # cross_mask = []
+        # # print("reacts_tokens", reacts_smiles[0])
+        # # print("prods_tokens", prods_smiles[0])
+        # # print("reacts_token_ids 0", reacts_token_ids[0])
+        # # print("reacts_token_ids -1", reacts_token_ids[-1])
+        # # print("prods_token_ids 0", prods_token_ids[0])
+        # # print("prods_token_ids -1", prods_token_ids[-1])
+        # # print("reacts_token_ids", )
+        # for i, smi in enumerate(prods_smiles):
+        # #     smi = smi.split(">", maxsplit=1)[1]
+        # #     atom_feature, edge, adj = get_graph_features_from_smi(smi)
+        # #     prods_adj.append(adj)
+        # #     atom_features.append(atom_feature)
+        # #     edges.append(edge)
+        # #     lengths.append(len(atom_feature))
+        # #   add cross_att
+        #     mask_c = get_atom_map(prods_smiles[i], reacts_smiles[i])
+        #     cross_mask.append(mask_c)
+        # # print(cross_mask)
+        # # prods_adj = self.tokeniser._pad_adj(prods_adj, 0)
+        # # prods_atom = self.tokeniser._pad_atom(atom_features, 0)
+        # # prods_edge = self.tokeniser._pad_edge(edges, 0)
+        # # lengths = torch.tensor(lengths)
+        # # prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
+        # # prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
+        # # prods_edge = torch.tensor(prods_edge, dtype=torch.float32)
+        
+        # cross_mask = self.tokeniser._pad_adj(cross_mask, 0)
+        # cross_mask = torch.tensor(cross_mask, dtype=torch.int64)
+
+        # print("reacts_token_ids", type(reacts_token_ids))
+
 
         # type_tokens_list = [self.tokeniser.vocab.get(token, self.tokeniser.unk_id) for token in type_tokens]
         type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
@@ -469,7 +487,8 @@ class FineTuneReactionDataModule(_AbsDataModule):
                 # "prods_atom": prods_atom,
                 # "prods_edge": prods_edge,
                 # "lengths": lengths,
-                "type_tokens": type_tokens
+                "type_tokens": type_tokens,
+                # "cross_mask": cross_mask
             }
 
         return collate_output
@@ -593,24 +612,24 @@ class reactionTypeDataModule(_AbsDataModule):
 
 
         # prompt data (atom, edge, atom_length, adj)
-        prods_adj = []
-        atom_features = []
-        edges = []
-        lengths = []
-        for smi in prods_smiles:
-            smi = smi.split(">", maxsplit=1)[1]
-            atom_feature, edge, adj = get_graph_features_from_smi(smi)
-            prods_adj.append(adj)
-            atom_features.append(atom_feature)
-            edges.append(edge)
-            lengths.append(len(atom_feature))
-        prods_adj = self.tokeniser._pad_adj(prods_adj, 0)
-        prods_atom = self.tokeniser._pad_atom(atom_features, 0)
-        prods_edge = self.tokeniser._pad_edge(edges, 0)
-        lengths = torch.tensor(lengths)
-        prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
-        prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
-        prods_edge = torch.tensor(prods_edge, dtype=torch.float32) 
+        # prods_adj = []
+        # atom_features = []
+        # edges = []
+        # lengths = []
+        # for smi in prods_smiles:
+        #     smi = smi.split(">", maxsplit=1)[1]
+        #     atom_feature, edge, adj = get_graph_features_from_smi(smi)
+        #     prods_adj.append(adj)
+        #     atom_features.append(atom_feature)
+        #     edges.append(edge)
+        #     lengths.append(len(atom_feature))
+        # prods_adj = self.tokeniser._pad_adj(prods_adj, 0)
+        # prods_atom = self.tokeniser._pad_atom(atom_features, 0)
+        # prods_edge = self.tokeniser._pad_edge(edges, 0)
+        # lengths = torch.tensor(lengths)
+        # prods_adj = torch.tensor(prods_adj, dtype=torch.float32)
+        # prods_atom = torch.tensor(prods_atom, dtype=torch.float32)
+        # prods_edge = torch.tensor(prods_edge, dtype=torch.float32) 
 
         type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
         type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
@@ -640,10 +659,10 @@ class reactionTypeDataModule(_AbsDataModule):
                 # "target_smiles": reacts_smiles,
 
                 # prompt
-                "prods_adj": prods_adj,
-                "prods_atom": prods_atom,
-                "prods_edge": prods_edge,
-                "lengths": lengths,
+                # "prods_adj": prods_adj,
+                # "prods_atom": prods_atom,
+                # "prods_edge": prods_edge,
+                # "lengths": lengths,
                 "type_tokens": type_tokens
             }
 

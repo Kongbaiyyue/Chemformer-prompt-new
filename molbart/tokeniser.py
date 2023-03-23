@@ -414,14 +414,15 @@ class MolEncTokeniser:
 
     @staticmethod
     def _pad_adj(adjs, pad_token):
-        pad_length = max([len(seq[0]) for seq in adjs])
+        pad_col_length = max([len(seq[0]) for seq in adjs])
+        pad_row_length = max([len(seq) for seq in adjs])
         padded = []
         for seq in adjs:
             adj = []
             for adj_node in seq:
-                adj.append(adj_node + ([pad_token] * (pad_length - len(adj_node))))
-            for i in range(pad_length - len(seq[0])):
-                adj.append([pad_token] * pad_length)
+                adj.append(adj_node + ([pad_token] * (pad_col_length - len(adj_node))))
+            for i in range(pad_row_length - len(seq)):
+                adj.append([pad_token] * pad_col_length)
             padded.append(adj)
 
         return padded

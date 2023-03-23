@@ -60,6 +60,8 @@ def main(args):
         model = util.load_unified(args, sampler)
     elif args.model_type == "reactionType":
         model = util.load_reactionType(args, sampler)
+    elif args.model_type == "bartAddReactionType":
+        model = util.load_bartAddReactionType(args, sampler)
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
 
@@ -99,6 +101,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_tokens", type=int, default=DEFAULT_TRAIN_TOKENS)
     parser.add_argument("--num_buckets", type=int, default=DEFAULT_NUM_BUCKETS)
     parser.add_argument("--aug_prob", type=float, default=DEFAULT_AUG_PROB)
-
+    
+    # model for reaction_type
+    parser.add_argument("--reaction_model_path", type=str, default=None)
     args = parser.parse_args()
     main(args)
