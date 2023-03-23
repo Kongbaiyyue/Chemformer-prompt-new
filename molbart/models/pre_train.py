@@ -366,7 +366,7 @@ class BARTModel(_AbsTransformerModel):
         # enc_layer = MyPreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
         # self.encoder = MyTransformerEncoder(enc_layer, num_layers, norm=enc_norm)
         enc_layer = PreNormEncoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
-        self.encoder = MyTransformerEncoder(enc_layer, num_layers, norm=enc_norm)
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers, norm=enc_norm)
 
         dec_norm = nn.LayerNorm(d_model)
         dec_layer = PreNormDecoderLayer(d_model, num_heads, d_feedforward, dropout, activation)
@@ -449,6 +449,7 @@ class BARTModel(_AbsTransformerModel):
             
         #     # print("pred_ids:", pred_ids.shape)
         #     encoder_input[0, :] = (pred_ids + 262)
+        print("decoder_input", decoder_input)
 
         batch_size = encoder_input.shape[1]
         
@@ -653,9 +654,13 @@ class BARTModel(_AbsTransformerModel):
 
         inv_target_mask = ~(target_mask > 0)
         num_tokens = inv_target_mask.sum()
+        print("loss shape:", loss.shape)
         loss = loss.sum() / num_tokens
 
-        return loss
+        token_mask_loss = torch.tensor(0.)
+        type_loss = torch.tensor(0.)
+
+        return loss, token_mask_loss, type_loss
 
     def sample_molecules(self, batch_input, sampling_alg="greedy"):
         """ Sample molecules from the model
