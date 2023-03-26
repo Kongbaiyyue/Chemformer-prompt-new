@@ -2,7 +2,7 @@
 
 python -m molbart.evaluate \
   --data_path ./data/uspto_50.pickle \
-  --model_path tb_logs/backward_prediction/version_249/checkpoints/last.ckpt \
+  --model_path tb_logs/backward_prediction/version_270_Chemformer/checkpoints/last.ckpt \
   --dataset uspto_50 \
   --task backward_prediction \
   --batch_size 64 \

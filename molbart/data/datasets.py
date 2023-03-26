@@ -148,6 +148,8 @@ class Uspto50(ReactionDataset):
         self.train_idxs, self.val_idxs, self.test_idxs = self._save_idxs(df)
 
     def _prepare_strings(self, react, prod, type_token):
+        # react = Chem.MolFromSmiles(react)
+        # prod = Chem.MolFromSmiles(prod)
         react_str = self._augment_to_smiles(react)
         prod_str = self._augment_to_smiles(prod)
 
@@ -155,8 +157,8 @@ class Uspto50(ReactionDataset):
             react_str = f"{str(type_token)}{react_str}" if self.type_token else react_str
         else:
             prod_str = f"{str(type_token)}{prod_str}" if self.type_token else prod_str
-        react_str = f"{str(type_token)}{react_str}"
-        return react_str, prod_str
+        # react_str = f"{str(type_token)}{react_str}"
+        return react_str, prod_str, type_token
 
 
 class UsptoMixed(ReactionDataset):

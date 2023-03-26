@@ -12,7 +12,8 @@ from molbart.models.template_prompt import TPrompt
 from molbart.models.util import (
     PreNormEncoderLayer,
     PreNormDecoderLayer,
-    FuncLR
+    FuncLR,
+    SupConLoss
 )
 
 
@@ -376,7 +377,9 @@ class BARTModel(_AbsTransformerModel):
         self.token_fc = nn.Linear(d_model, vocab_size)
         self.loss_fn = nn.CrossEntropyLoss(reduction="none", ignore_index=pad_token_idx)
         self.loss_attn = nn.MSELoss(reduction='sum')
-        self.loss_type_fn = nn.CrossEntropyLoss(reduction="none")
+        # self.loss_type_fn = nn.CrossEntropyLoss(reduction="none")
+        self.loss_type_fn = nn.BCEWithLogitsLoss()
+        self.loss_type_fn = SupConLoss(temperature=0.014)
         self.log_softmax = nn.LogSoftmax(dim=2)
 
         # freeze encoder and decoder
@@ -405,6 +408,7 @@ class BARTModel(_AbsTransformerModel):
         # self.prompt_model = TPrompt(d_model, num_hiddens, num_heads, num_layers, 3, vocab_size=vocab_size, n_prefix_conv=64)
 
         # self.prompt_model = None
+        self.w_alpha = 0.6
 
         # self.type_token_fc = nn.Linear(d_model, 10)
     
@@ -449,7 +453,6 @@ class BARTModel(_AbsTransformerModel):
             
         #     # print("pred_ids:", pred_ids.shape)
         #     encoder_input[0, :] = (pred_ids + 262)
-        print("decoder_input", decoder_input)
 
         batch_size = encoder_input.shape[1]
         
@@ -510,10 +513,14 @@ class BARTModel(_AbsTransformerModel):
         # entity_len = atom.shape[1]
         # type_embeds = prompt_embeds.clone()[0, 0, :, :, :].permute(1, 0, 2)[:, -1, :].reshape(batch_size, -1)
         # type_smiles = self.prompt_model.token_fc(type_embeds)
+        # type_smiles = self.type_token_fc(model_output[0, :, :])
+        # type_smiles = token_output[0, :, :]
 
         output = {
             "model_output": model_output,
             "token_output": token_output,
+            "memory": memory,
+            # "type_smiles": type_smiles
         }
 
         return output
@@ -617,23 +624,43 @@ class BARTModel(_AbsTransformerModel):
 
         tokens = batch_input["target"]
         pad_mask = batch_input["target_mask"]
-        # type_tokens = batch_input["type_tokens"]
+        type_tokens = batch_input["type_tokens"]
         token_output = model_output["token_output"]
         # type_smiles = model_output["type_smiles"]
+        memory = model_output["memory"][0]
         
-        loss, token_mask_loss, type_loss  = self._calc_mask_loss(token_output, tokens, pad_mask)
+        token_mask_loss  = self._calc_mask_loss(token_output, tokens, pad_mask)
+
+        # reaction type loss
         # type_loss = self.loss_type_fn(type_smiles, type_tokens)
         seq_len, batch_size = tuple(tokens.size())
+        # print("memory", memory.shape)
+        # memory = memory.permute(1, 0, 2)
+        # print("memory", memory.shape)
+        # memory = memory.view(batch_size, -1)
+        logits = memory @ memory.transpose(1, 0)
+        type_tokens = type_tokens.unsqueeze(1)
+        # print("type_tokens:", type_tokens)
+        contrast_matrix = torch.eq(type_tokens, type_tokens.transpose(1, 0))
+        label = contrast_matrix.float()
+        type_loss = self.loss_type_fn(logits, label)
+        
         # print(type_loss.shape)
         # type_loss = type_loss.sum() / batch_size
+        # print(type_loss)
+        type_loss = type_loss / batch_size
 
-        # loss = token_mask_loss + type_loss
+
+        # loss = self.w_alpha * token_mask_loss + (1 - self.w_alpha) * type_loss
+        loss = token_mask_loss + 10 * type_loss
         # loss = token_mask_loss
         # loss = type_loss
         # loss = cross_loss + token_mask_loss
 
         # return token_mask_loss
+        # return loss, self.w_alpha * token_mask_loss, (1 - self.w_alpha) * type_loss
         return loss, token_mask_loss, type_loss
+
 
     def _calc_mask_loss(self, token_output, target, target_mask):
         """ Calculate the loss for the token prediction task
@@ -648,19 +675,24 @@ class BARTModel(_AbsTransformerModel):
         """
 
         seq_len, batch_size = tuple(target.size())
+        # print("target:", target)
 
         token_pred = token_output.reshape((seq_len * batch_size, -1)).float()
         loss = self.loss_fn(token_pred, target.reshape(-1)).reshape((seq_len, batch_size))
 
         inv_target_mask = ~(target_mask > 0)
         num_tokens = inv_target_mask.sum()
-        print("loss shape:", loss.shape)
         loss = loss.sum() / num_tokens
 
-        token_mask_loss = torch.tensor(0.)
-        type_loss = torch.tensor(0.)
+        # num_tokens = inv_target_mask.sum() - batch_size
 
-        return loss, token_mask_loss, type_loss
+        # token_mask_loss = loss[1:, :].sum() / num_tokens
+        # type_loss = loss[0, :].sum() / batch_size
+
+        # loss = token_mask_loss + type_loss
+
+        # return loss, token_mask_loss, type_loss
+        return loss
 
     def sample_molecules(self, batch_input, sampling_alg="greedy"):
         """ Sample molecules from the model
@@ -722,6 +754,30 @@ class BARTModel(_AbsTransformerModel):
         model_output = self.decode(decode_input)
         return model_output
     
+    def _calc_type_token_acc(self, batch_input, model_output):
+        token_ids = batch_input["type_tokens"]
+        encoder_input = batch_input["encoder_input"].transpose(0, 1)
+        decoder_input = batch_input["decoder_input"].transpose(0, 1)
+        
+        token_output = model_output["type_smiles"]
+
+        _, pred_ids = torch.max(token_output.float(), dim=1)
+        with open("data/USPTO_full/Pseudo_type_uspto_full_only_reaction_type.txt", "a") as f:
+            for i in range(encoder_input.shape[0]):
+                f.write("prod: " + str(encoder_input[i].tolist()) + "\n")
+                f.write("reac: " + str(decoder_input[i].tolist()) + "\n")
+                f.write("type: " + str(pred_ids[i].tolist()) + "\n")
+    
+        correct_ids = torch.eq(token_ids, pred_ids)
+
+        num_correct = correct_ids.sum().float()
+
+        total = token_ids.shape[0]
+
+        accuracy = num_correct / total
+        return accuracy
+
+    
     def test_step(self, batch, batch_idx):
         self.eval()
 
@@ -730,7 +786,7 @@ class BARTModel(_AbsTransformerModel):
 
         loss, token_mask_loss, type_loss = self._calc_loss(batch, model_output)
         token_acc = self._calc_token_acc(batch, model_output)
-        reaction_type_acc = self._calc_type_token_acc(batch, model_output)
+        # reaction_type_acc = self._calc_type_token_acc(batch, model_output)
         perplexity = self._calc_perplexity(batch, model_output)
         mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.test_sampling_alg)
         metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
@@ -738,7 +794,7 @@ class BARTModel(_AbsTransformerModel):
         test_outputs = {
             "test_loss": loss.item(),
             "test_token_acc": token_acc,
-            "reaction_type_acc": reaction_type_acc,
+            # "reaction_type_acc": reaction_type_acc,
             "test_perplexity": perplexity,
             "test_invalid_smiles": metrics["invalid"]
         }
@@ -767,7 +823,7 @@ class BARTModel(_AbsTransformerModel):
 
         loss, token_mask_loss, type_loss = self._calc_loss(batch, model_output)
         token_acc = self._calc_token_acc(batch, model_output)
-        reaction_type_acc = self._calc_type_token_acc(batch, model_output)
+        # reaction_type_acc = self._calc_type_token_acc(batch, model_output)
         perplexity = self._calc_perplexity(batch, model_output)
         mol_strs, log_lhs = self.sample_molecules(batch, sampling_alg=self.val_sampling_alg)
         metrics = self.sampler.calc_sampling_metrics(mol_strs, target_smiles)
@@ -777,12 +833,14 @@ class BARTModel(_AbsTransformerModel):
 
         # Log for prog bar only
         self.log("mol_acc", mol_acc, prog_bar=True, logger=False, sync_dist=True)
-        self.log("reaction_type_acc", reaction_type_acc, prog_bar=True, logger=False, sync_dist=True)
+        # self.log("reaction_type_acc", reaction_type_acc, prog_bar=True, logger=False, sync_dist=True)
 
         val_outputs = {
             "val_loss": loss,
+            "token_mask_loss": token_mask_loss,
+            "val_type_loss": type_loss,
             "val_token_acc": token_acc,
-            "reaction_type_acc":reaction_type_acc,
+            # "reaction_type_acc":reaction_type_acc,
             "perplexity": perplexity,
             "val_molecular_accuracy": mol_acc,
             "val_invalid_smiles": invalid
@@ -791,7 +849,8 @@ class BARTModel(_AbsTransformerModel):
     
     def validation_epoch_end(self, outputs):
         avg_outputs = self._avg_dicts(outputs)
-        path = "loss_logs/val_avg_type_loss_weight_10.txt"
+        # path = "decoder_loss_logs/val_avg_decoder_on_first_type_loss_weight_1_300epoch.txt"
+        path = "decoder_loss_logs/val_avg_encoder_contrast_loss_w10.txt"
         self.save_loss(avg_outputs, path)
         self._log_dict(avg_outputs)
     
@@ -814,7 +873,8 @@ class BARTModel(_AbsTransformerModel):
     def training_epoch_end(self, outputs):
         # print(outputs[0].keys())
         avg_outputs = self._avg_dicts(outputs)
-        path = "loss_logs/avg_type_loss_weight_10.txt"
+        # path = "decoder_loss_logs/avg_decoder_on_first_type_loss_weight_1_300epoch.txt"
+        path = "decoder_loss_logs/avg_encoder_contrast_loss_w10.txt"
         self.save_loss(avg_outputs, path)
         self._log_dict(avg_outputs)
 
@@ -822,8 +882,11 @@ class BARTModel(_AbsTransformerModel):
         with open(path, "a") as f:
             f.write("epoch " + str(self.current_epoch) + ":\n")
             for key, val in data.items():
-                if key == "train_loss" or key == "type_loss":
-                    f.write(key + ": " + str(val) + "\n")
+                f.write(key + ": " + str(val) + "\n")
+                # if key == "train_loss" or key == "type_loss":
+                #     f.write(key + ": " + str(val) + "\n")
+                # elif key == "token_mask_loss" or key == "val_type_loss":
+                #     f.write(key + ": " + str(val) + "\n")
 
 
 class UnifiedModel(_AbsTransformerModel):

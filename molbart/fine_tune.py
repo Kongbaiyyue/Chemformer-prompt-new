@@ -98,6 +98,7 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
         model = load_rand_model(args, extra_args, sampler, vocab_size, total_steps, pad_token_idx)
     else:
         if args.model_type == "bart":
+            print("123")
             checkpoint = pl_load(args.model_path, map_location=lambda storage, loc: storage)
             model = BARTModel(
                         sampler,

@@ -29,7 +29,7 @@ class MyTransformerEncoder(TransformerEncoder):
         """
         output = src
         i = 0
-        half_layer = len(self.layers) / 2 - 1
+        # half_layer = len(self.layers) / 2 - 1
         half_feature = []
         for mod in self.layers:
             if prompt_embeds is not None:

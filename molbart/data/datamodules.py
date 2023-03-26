@@ -388,14 +388,14 @@ class FineTuneReactionDataModule(_AbsDataModule):
         self.forward_pred = forward_pred
         self.unified_model = unified_model
 
-        # self.reaction_type = {"<RX_1>": 0, "<RX_2>": 1, "<RX_3>": 2, "<RX_4>": 3, "<RX_5>": 4, "<RX_6>": 5, "<RX_7>": 6, "<RX_8>": 7, "<RX_9>": 8, "<RX_10>": 9}
+        self.reaction_type = {"<RX_1>": 0, "<RX_2>": 1, "<RX_3>": 2, "<RX_4>": 3, "<RX_5>": 4, "<RX_6>": 5, "<RX_7>": 6, "<RX_8>": 7, "<RX_9>": 8, "<RX_10>": 9}
 
     def _collate(self, batch, train=True):
         if self.unified_model:
             collate_output = self._collate_unified(batch)
             return collate_output
 
-        reacts_smiles, prods_smiles = tuple(zip(*batch))
+        reacts_smiles, prods_smiles, type_tokens = tuple(zip(*batch))
         reacts_output = self.tokeniser.tokenise(reacts_smiles, pad=True)
         prods_output = self.tokeniser.tokenise(prods_smiles, pad=True)
 
@@ -455,8 +455,8 @@ class FineTuneReactionDataModule(_AbsDataModule):
 
 
         # type_tokens_list = [self.tokeniser.vocab.get(token, self.tokeniser.unk_id) for token in type_tokens]
-        # type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
-        # type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
+        type_tokens_list = [self.reaction_type.get(token) for token in type_tokens]
+        type_tokens = torch.tensor(type_tokens_list, dtype=torch.int64)
         # print("prods_adj shape", prods_adj.shape)
         # print("prods_atom shape", prods_atom.shape)
         # print("prods_edge shape", prods_edge.shape)
@@ -488,6 +488,7 @@ class FineTuneReactionDataModule(_AbsDataModule):
                 # "prods_edge": prods_edge,
                 # "lengths": lengths,
                 # "cross_mask": cross_mask
+                "type_tokens": type_tokens
             }
 
         return collate_output
