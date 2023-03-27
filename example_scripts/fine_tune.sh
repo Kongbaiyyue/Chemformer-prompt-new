@@ -10,9 +10,12 @@ python -m molbart.fine_tune \
   --acc_batches 4 \
   --augment all \
   --aug_prob 0.5 \
+  --reaction_model_path tb_logs/backward_prediction/version_259_avg_type_loss_by_batch_weight_1_decoder/checkpoints/last.ckpt
+  # --model_type reactionType\
+  
   
   # --model_path models/combined/step=1000000.ckpt \
-# --model_path None \
+  # --model_path None \
   # --model_type reactionType\
   # --reaction_model_path tb_logs/backward_prediction/version_126_predict_reaction_type_org_10class/checkpoints/last.ckpt
   # --model_type reactionType\

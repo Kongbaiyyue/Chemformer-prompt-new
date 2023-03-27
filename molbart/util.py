@@ -322,9 +322,9 @@ def load_bartAddReactionType(args, sampler):
     )
     
     
-    model.reaction_type_model = ReactionTypeModel.load_from_checkpoint(
-        args.reaction_model_path,
-    )
+    # model.reaction_type_model = ReactionTypeModel.load_from_checkpoint(
+    #     args.reaction_model_path,
+    # )
     model.reaction_type_model.eval()
     model.eval()
     return model

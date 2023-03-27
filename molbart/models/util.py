@@ -41,16 +41,16 @@ class PreNormDecoderLayer(nn.TransformerDecoderLayer):
 
         # Context attention block
         att = self.norm2(query)
-        # att = self.multihead_attn(att, memory, memory, attn_mask=memory_mask, 
-        #         key_padding_mask=memory_key_padding_mask)[0]
-        att, att_weight = self.multihead_attn(att, memory, memory, attn_mask=memory_mask, 
-                key_padding_mask=memory_key_padding_mask)
+        att = self.multihead_attn(att, memory, memory, attn_mask=memory_mask, 
+                key_padding_mask=memory_key_padding_mask)[0]
+        # att, att_weight = self.multihead_attn(att, memory, memory, attn_mask=memory_mask, 
+        #         key_padding_mask=memory_key_padding_mask)
         att = query + self.dropout2(att)
 
         # Feedforward block
         out = self.norm3(att)
         out = self.linear2(self.dropout(self.activation(self.linear1(out))))
         out = att + self.dropout3(out)
-        return out, att_weight
-        # return out
+        # return out, att_weight
+        return out
 

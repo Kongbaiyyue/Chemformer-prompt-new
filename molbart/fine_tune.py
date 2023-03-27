@@ -118,7 +118,7 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
                         **extra_args
                     )
             model.load_state_dict(checkpoint["state_dict"], strict=True)
-            model.type_token_fc = nn.Linear(args.d_model, 10)
+            # model.type_token_fc = nn.Linear(args.d_model, 10)
 
             # prompt
             # vocab_size, num_hiddens, ffn_num_hiddens, num_heads = 88, 256, 512, 8
@@ -130,27 +130,27 @@ def load_model(args, sampler, vocab_size, total_steps, pad_token_idx):
             # model.prompt_model.gcn_model.load_state_dict(torch.load('gcn_3layer.pt'))
 
             # model.prompt_model.load_state_dict(torch.load('fuse_pretrain_mask_3layer.pt'), strict=False)
-            # if args.reaction_model_path is not None:
-            #     checkpoint = pl_load(args.reaction_model_path, map_location=lambda storage, loc: storage)
-            #     model.reaction_type_model = ReactionTypeModel(
-            #                 sampler,
-            #                 pad_token_idx,
-            #                 vocab_size,
-            #                 args.d_model,
-            #                 args.num_layers,
-            #                 args.num_heads,
-            #                 args.d_feedforward,
-            #                 args.lr,
-            #                 DEFAULT_WEIGHT_DECAY,
-            #                 util.DEFAULT_ACTIVATION,
-            #                 total_steps,
-            #                 util.DEFAULT_MAX_SEQ_LEN,
-            #                 schedule=args.schedule,
-            #                 dropout=util.DEFAULT_DROPOUT,
-            #                 warm_up_steps=args.warm_up_steps,
-            #                 **extra_args
-            #             )
-            #     model.reaction_type_model.load_state_dict(checkpoint["state_dict"], strict=True)
+            if args.reaction_model_path is not None:
+                checkpoint = pl_load(args.reaction_model_path, map_location=lambda storage, loc: storage)
+                model.reaction_type_model = ReactionTypeModel(
+                            sampler,
+                            pad_token_idx,
+                            vocab_size,
+                            args.d_model,
+                            args.num_layers,
+                            args.num_heads,
+                            args.d_feedforward,
+                            args.lr,
+                            DEFAULT_WEIGHT_DECAY,
+                            util.DEFAULT_ACTIVATION,
+                            total_steps,
+                            util.DEFAULT_MAX_SEQ_LEN,
+                            schedule=args.schedule,
+                            dropout=util.DEFAULT_DROPOUT,
+                            warm_up_steps=args.warm_up_steps,
+                            **extra_args
+                        )
+                model.reaction_type_model.load_state_dict(checkpoint["state_dict"], strict=True)
 
 
             # for name, parameters in model.prompt_model.graph_model.named_parameters():
